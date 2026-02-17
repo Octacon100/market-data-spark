@@ -18,9 +18,25 @@ import io
 import os
 from typing import List, Optional
 from dataclasses import dataclass, asdict
+from pathlib import Path
 import dotenv
 
 dotenv.load_dotenv()
+
+# ============================================================================
+# Watchlist Loader
+# ============================================================================
+
+WATCHLIST_PATH = Path(__file__).parent.parent / "config" / "watchlist.json"
+
+
+def load_watchlist() -> dict:
+    """Load watchlist config from config/watchlist.json"""
+    if WATCHLIST_PATH.exists():
+        with open(WATCHLIST_PATH, "r") as f:
+            return json.load(f)
+    return {}
+
 
 # ============================================================================
 # Configuration
@@ -36,8 +52,16 @@ class PipelineConfig:
 
     def __post_init__(self):
         if self.symbols is None:
-            self.symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA']
-            # self.symbols = ['AAPL']
+            # Priority: 1) SYMBOLS env var  2) watchlist.json  3) hardcoded default
+            env_symbols = os.getenv('SYMBOLS', '')
+            if env_symbols:
+                self.symbols = [s.strip() for s in env_symbols.split(',') if s.strip()]
+            else:
+                watchlist = load_watchlist()
+                if watchlist.get('symbols'):
+                    self.symbols = watchlist['symbols']
+                else:
+                    self.symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA']
 
         # Validation
         if not self.alpha_vantage_key:

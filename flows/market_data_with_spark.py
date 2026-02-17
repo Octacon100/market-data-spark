@@ -6,6 +6,7 @@ Complete integration: Data collection → Spark analytics → Results
 from prefect import flow
 from market_data_flow import market_data_pipeline
 from emr_tasks import spark_analytics_flow
+from buy_signal_alerts import buy_signal_alert_flow
 from datetime import datetime
 import os
 
@@ -60,23 +61,34 @@ def market_data_pipeline_with_spark():
     
     emr_results = spark_analytics_flow()
     
-    # Phase 3: Summary
+    # Phase 3: Buy Signal Alerts
     print("\n" + "="*70)
-    print("📋 PIPELINE SUMMARY")
+    print("[SIGNALS] PHASE 3: Buy Signal Detection & Alerts")
+    print("-"*70)
+
+    signal_results = buy_signal_alert_flow(bucket=os.getenv('S3_BUCKET'))
+    signal_count = signal_results.get('count', 0)
+
+    # Phase 4: Summary
+    print("\n" + "="*70)
+    print("[COMPLETE] PIPELINE SUMMARY")
     print("="*70)
-    print(f"✅ Data Collection: {success_count} symbols")
-    print(f"⚡ Spark Analytics: Cluster {emr_results.get('cluster_id', 'N/A')}")
-    print(f"🔄 Status: Jobs running on EMR (auto-terminates when done)")
-    print(f"💰 Estimated Cost: $0.15 - $0.25")
+    print(f"[OK] Data Collection: {success_count} symbols")
+    print(f"[RUN] Spark Analytics: Cluster {emr_results.get('cluster_id', 'N/A')}")
+    print(f"[SIGNALS] Buy Signals: {signal_count} detected")
+    print(f"[WAIT] Status: Jobs running on EMR (auto-terminates when done)")
+    print(f"[COST] Estimated Cost: $0.15 - $0.25")
     print("="*70 + "\n")
-    
+
     return {
         'phase': 'complete',
         'data_results': data_results,
         'emr_results': emr_results,
+        'signal_results': signal_results,
         'summary': {
             'symbols_processed': success_count,
             'emr_cluster_id': emr_results.get('cluster_id'),
+            'buy_signals_detected': signal_count,
             'start_time': emr_results.get('start_time'),
             'message': 'Pipeline complete - EMR cluster running'
         }

@@ -66,3 +66,4 @@ data/
 *.csv
 *.parquet
 *.json
+!config/watchlist.json
