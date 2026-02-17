@@ -30,12 +30,12 @@ dotenv.load_dotenv()
 WATCHLIST_PATH = Path(__file__).parent.parent / "config" / "watchlist.json"
 
 
-def load_watchlist() -> dict:
-    """Load watchlist config from config/watchlist.json"""
+def load_watchlist() -> list:
+    """Load stock symbols from config/watchlist.json (plain list of tickers)"""
     if WATCHLIST_PATH.exists():
         with open(WATCHLIST_PATH, "r") as f:
             return json.load(f)
-    return {}
+    return []
 
 
 # ============================================================================
@@ -58,8 +58,8 @@ class PipelineConfig:
                 self.symbols = [s.strip() for s in env_symbols.split(',') if s.strip()]
             else:
                 watchlist = load_watchlist()
-                if watchlist.get('symbols'):
-                    self.symbols = watchlist['symbols']
+                if watchlist:
+                    self.symbols = watchlist
                 else:
                     self.symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA']
 

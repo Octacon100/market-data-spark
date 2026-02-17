@@ -18,13 +18,13 @@ from pathlib import Path
 # Configuration
 # ============================================================================
 
-WATCHLIST_PATH = Path(__file__).parent.parent / "config" / "watchlist.json"
+SETTINGS_PATH = Path(__file__).parent.parent / "config" / "pipeline_settings.json"
 
 
-def load_watchlist():
-    """Load watchlist config from config/watchlist.json"""
-    if WATCHLIST_PATH.exists():
-        with open(WATCHLIST_PATH, "r") as f:
+def load_settings():
+    """Load pipeline settings from config/pipeline_settings.json"""
+    if SETTINGS_PATH.exists():
+        with open(SETTINGS_PATH, "r") as f:
             return json.load(f)
     return {}
 
@@ -50,11 +50,11 @@ def detect_buy_signals(bucket: str) -> list:
     Returns:
         list: Detected buy signals with details
     """
-    watchlist = load_watchlist()
-    rules = watchlist.get("buy_signals", {}).get("rules", {})
+    settings = load_settings()
+    rules = settings.get("buy_signals", {}).get("rules", {})
 
-    if not watchlist.get("buy_signals", {}).get("enabled", False):
-        print("[INFO] Buy signal detection is disabled in watchlist.json")
+    if not settings.get("buy_signals", {}).get("enabled", False):
+        print("[INFO] Buy signal detection is disabled in pipeline_settings.json")
         return []
 
     s3 = boto3.client("s3")
@@ -193,7 +193,7 @@ def send_email_alerts(signals: list):
 
     Requires:
     - ALERT_EMAIL_SENDER in .env (verified SES sender)
-    - recipients configured in config/watchlist.json
+    - recipients configured in config/pipeline_settings.json
     - SES sender/recipients verified in AWS console
 
     Args:
@@ -203,16 +203,16 @@ def send_email_alerts(signals: list):
         print("[INFO] No signals to send")
         return
 
-    watchlist = load_watchlist()
-    alert_config = watchlist.get("alerts", {})
+    settings = load_settings()
+    alert_config = settings.get("alerts", {})
 
     if not alert_config.get("email_enabled", False):
-        print("[INFO] Email alerts disabled in watchlist.json - set alerts.email_enabled to true")
+        print("[INFO] Email alerts disabled in pipeline_settings.json - set alerts.email_enabled to true")
         return
 
     recipients = alert_config.get("recipients", [])
     if not recipients:
-        print("[WARN] No email recipients configured in watchlist.json")
+        print("[WARN] No email recipients configured in pipeline_settings.json")
         return
 
     sender = os.getenv("ALERT_EMAIL_SENDER", "")
@@ -385,7 +385,7 @@ def buy_signal_alert_flow(bucket: str = None):
 
     Steps:
     1. Read ML features from S3
-    2. Evaluate buy signal rules from watchlist.json
+    2. Evaluate buy signal rules from pipeline_settings.json
     3. Create Prefect artifact with results
     4. Send email via AWS SES (if configured)
 
