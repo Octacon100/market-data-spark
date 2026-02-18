@@ -66,3 +66,5 @@ data/
 *.csv
 *.parquet
 *.json
+!config/watchlist.json
+!config/pipeline_settings.json

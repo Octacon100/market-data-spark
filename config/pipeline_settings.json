@@ -1,0 +1,31 @@
+{
+    "buy_signals": {
+        "enabled": true,
+        "rules": {
+            "golden_cross": {
+                "enabled": true,
+                "description": "7-day MA crosses above 30-day MA"
+            },
+            "momentum_surge": {
+                "enabled": true,
+                "description": "7-day momentum exceeds threshold",
+                "min_momentum_pct": 3.0
+            },
+            "oversold_bounce": {
+                "enabled": true,
+                "description": "Price recovers above 30-day MA after dipping below",
+                "ma_field": "ma_30d"
+            },
+            "low_vol_uptrend": {
+                "enabled": true,
+                "description": "Low volatility with positive momentum (stable uptrend)",
+                "max_volatility_7d_pct": 2.0,
+                "min_momentum_pct": 1.0
+            }
+        }
+    },
+    "alerts": {
+        "email_enabled": false,
+        "recipients": []
+    }
+}

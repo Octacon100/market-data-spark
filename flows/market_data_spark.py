@@ -7,6 +7,7 @@ from prefect import flow
 from market_data_flow import market_data_pipeline
 from emr_tasks import spark_analytics_flow as emr_spark_flow
 from glue_tasks import glue_analytics_flow
+from buy_signal_alerts import buy_signal_alert_flow
 from datetime import datetime
 import os
 
@@ -94,30 +95,41 @@ def market_data_pipeline_spark(backend: str = "glue"):
         
         print(f"\n[OK] Glue jobs completed: {job_success}/{job_count} successful")
     
-    # Phase 3: Summary
+    # Phase 3: Buy Signal Alerts
+    print("\n" + "="*70)
+    print("[SIGNALS] PHASE 3: Buy Signal Detection & Alerts")
+    print("-"*70)
+
+    signal_results = buy_signal_alert_flow(bucket=os.getenv('S3_BUCKET'))
+    signal_count = signal_results.get('count', 0)
+
+    # Phase 4: Summary
     print("\n" + "="*70)
     print("[COMPLETE] PIPELINE SUMMARY")
     print("="*70)
     print(f"[OK] Data Collection: {success_count} symbols")
     print(f"[RUN] Spark Backend: {backend.upper()}")
-    
+
     if backend == "emr":
         print(f"[SETUP] EMR Cluster: {spark_results.get('cluster_id', 'N/A')}")
         print(f"[WAIT] Status: Jobs running (cluster auto-terminates)")
     else:
         print(f"[OK] Glue Jobs: {job_success}/{job_count} succeeded")
-    
+
+    print(f"[SIGNALS] Buy Signals: {signal_count} detected")
     print(f"[COST] Estimated Cost: {cost_estimate}")
     print("="*70 + "\n")
-    
+
     return {
         'phase': 'complete',
         'backend': backend,
         'data_results': data_results,
         'spark_results': spark_results,
+        'signal_results': signal_results,
         'summary': {
             'symbols_processed': success_count,
             'backend_used': backend,
+            'buy_signals_detected': signal_count,
             'estimated_cost': cost_estimate,
             'message': f'Pipeline complete - {backend.upper()} analytics finished'
         }
