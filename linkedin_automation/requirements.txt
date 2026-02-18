@@ -1,0 +1,18 @@
+# LinkedIn Post Automation - Python 3.11
+# Install with: pip install -r requirements.txt
+
+# Orchestration
+prefect>=3.0.0
+
+# AI - draft generation
+anthropic>=0.25.0
+
+# AWS - S3 topic queue storage
+boto3>=1.34.0
+botocore>=1.34.0
+
+# Data - CSV manipulation
+pandas>=2.1.0
+
+# Environment management
+python-dotenv>=1.0.0

@@ -1,0 +1,11 @@
+id,topic,category,notes
+1,"Financial data governance lessons from hedge funds",governance,""
+2,"Why partitioning strategy matters more than the query",data-engineering,""
+3,"IAM permissions gotchas in AWS Glue",aws,""
+4,"Moving from stored procedures to Prefect orchestration",orchestration,""
+5,"What hedge fund data quality taught me about cloud pipelines",data-quality,""
+6,"Cost optimization: EMR vs Glue decision framework",aws,""
+7,"Building audit trails that compliance teams actually trust",compliance,""
+8,"Securities Master data - why it is harder than it looks",finance,""
+9,"Prefect 3.0 transactions vs traditional rollback patterns",orchestration,""
+10,"When to use Athena vs loading into a warehouse",aws,""
