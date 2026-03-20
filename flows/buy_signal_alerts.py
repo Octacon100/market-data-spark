@@ -1,6 +1,6 @@
 """
 Buy Signal Detection and Email Alerts
-Reads ML features from S3, evaluates buy signals, and sends email via AWS SES.
+Reads ML features from S3, evaluates buy signals, and sends email via Gmail SMTP.
 """
 
 from prefect import flow, task
@@ -8,6 +8,8 @@ from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
 import boto3
 import pandas as pd
+import smtplib
+from email.message import EmailMessage
 import io
 import os
 import json
@@ -110,6 +112,7 @@ def detect_buy_signals(bucket: str) -> list:
 
         # Signal 1: Golden Cross (7d MA crosses above 30d MA)
         if rules.get("golden_cross", {}).get("enabled", False):
+            print("Performance Golden Cross check.")
             prev_cross = prev.get("ma_7d", 0) <= prev.get("ma_30d", 0)
             curr_cross = curr.get("ma_7d", 0) > curr.get("ma_30d", 0)
             if prev_cross and curr_cross:
@@ -127,6 +130,7 @@ def detect_buy_signals(bucket: str) -> list:
         # Signal 2: Momentum Surge
         min_momentum = rules.get("momentum_surge", {}).get("min_momentum_pct", 3.0)
         if rules.get("momentum_surge", {}).get("enabled", False):
+            print("Performance Momentum Surge check.")
             momentum = curr.get("price_momentum_7d", 0)
             if momentum and momentum >= min_momentum:
                 signals.append({
@@ -141,6 +145,7 @@ def detect_buy_signals(bucket: str) -> list:
 
         # Signal 3: Oversold Bounce
         if rules.get("oversold_bounce", {}).get("enabled", False):
+            print("Performance Oversold Bounce check.")
             prev_below = prev.get("price", 0) < prev.get("ma_30d", 0)
             curr_above = curr.get("price", 0) > curr.get("ma_30d", 0)
             if prev_below and curr_above:
@@ -158,6 +163,7 @@ def detect_buy_signals(bucket: str) -> list:
         max_vol = rules.get("low_vol_uptrend", {}).get("max_volatility_7d_pct", 2.0)
         min_mom = rules.get("low_vol_uptrend", {}).get("min_momentum_pct", 1.0)
         if rules.get("low_vol_uptrend", {}).get("enabled", False):
+            print("Performance Low Volume Uptrend check.")
             vol_7d = curr.get("volatility_7d", None)
             momentum = curr.get("price_momentum_7d", 0)
             if vol_7d is not None and vol_7d < max_vol and momentum and momentum >= min_mom:
@@ -189,12 +195,12 @@ def detect_buy_signals(bucket: str) -> list:
 @task(log_prints=True, tags=["alerts", "email"])
 def send_email_alerts(signals: list):
     """
-    Send buy signal alerts via AWS SES.
+    Send buy signal alerts via Gmail SMTP.
 
-    Requires:
-    - ALERT_EMAIL_SENDER in .env (verified SES sender)
-    - recipients configured in config/pipeline_settings.json
-    - SES sender/recipients verified in AWS console
+    Requires .env variables:
+    - ALERT_EMAIL_FROM: Gmail address to send from
+    - ALERT_EMAIL_TO: Recipient email address
+    - GMAIL_APP_PASSWORD: Google App Password
 
     Args:
         signals: List of detected buy signals
@@ -210,18 +216,13 @@ def send_email_alerts(signals: list):
         print("[INFO] Email alerts disabled in pipeline_settings.json - set alerts.email_enabled to true")
         return
 
-    recipients = alert_config.get("recipients", [])
-    if not recipients:
-        print("[WARN] No email recipients configured in pipeline_settings.json")
-        return
+    email_from = os.getenv("ALERT_EMAIL_FROM", "")
+    email_to = os.getenv("ALERT_EMAIL_TO", "")
+    app_password = os.getenv("GMAIL_APP_PASSWORD", "")
 
-    sender = os.getenv("ALERT_EMAIL_SENDER", "")
-    if not sender:
-        print("[WARN] ALERT_EMAIL_SENDER not set in .env - skipping email")
+    if not all([email_from, email_to, app_password]):
+        print("[WARN] Gmail not configured - need ALERT_EMAIL_FROM, ALERT_EMAIL_TO, GMAIL_APP_PASSWORD in .env")
         return
-
-    region = os.getenv("AWS_REGION", "us-east-1")
-    ses = boto3.client("ses", region_name=region)
 
     # Build email body
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -291,26 +292,24 @@ def send_email_alerts(signals: list):
     </body>
     </html>"""
 
-    try:
-        ses.send_email(
-            Source=sender,
-            Destination={"ToAddresses": recipients},
-            Message={
-                "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {
-                    "Text": {"Data": text_body, "Charset": "UTF-8"},
-                    "Html": {"Data": html_body, "Charset": "UTF-8"},
-                },
-            },
-        )
-        print(f"[OK] Email sent to {', '.join(recipients)}")
+    # Build email message
+    msg = EmailMessage()
+    msg['From'] = email_from
+    msg['To'] = email_to
+    msg['Subject'] = subject
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype='html')
 
-    except ses.exceptions.MessageRejected as e:
-        print(f"[ERROR] SES rejected the message: {e}")
-        print("[INFO] Verify your sender and recipients in the AWS SES console")
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(email_from, app_password)
+            server.send_message(msg)
+        print(f"[OK] Email sent to {email_to}")
+
+    except smtplib.SMTPAuthenticationError:
+        print("[ERROR] Gmail authentication failed - check GMAIL_APP_PASSWORD in .env")
     except Exception as e:
         print(f"[ERROR] Failed to send email: {e}")
-        print("[INFO] Check AWS SES setup - sender and recipients must be verified")
 
 
 # ============================================================================
@@ -387,7 +386,7 @@ def buy_signal_alert_flow(bucket: str = None):
     1. Read ML features from S3
     2. Evaluate buy signal rules from pipeline_settings.json
     3. Create Prefect artifact with results
-    4. Send email via AWS SES (if configured)
+    4. Send email via Gmail SMTP (if configured)
 
     Args:
         bucket: S3 bucket name (defaults to S3_BUCKET env var)

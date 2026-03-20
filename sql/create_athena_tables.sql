@@ -23,7 +23,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS analytics.daily_stats (
 )
 PARTITIONED BY (date STRING)
 STORED AS PARQUET
-LOCATION 's3://YOUR-BUCKET-NAME/analytics/daily_stats/'
+LOCATION 's3://bucket_name/analytics/daily_stats/'
 TBLPROPERTIES ('parquet.compression'='SNAPPY');
 
 -- Add partitions
@@ -51,7 +51,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS analytics.ml_features (
 )
 PARTITIONED BY (symbol STRING)
 STORED AS PARQUET
-LOCATION 's3://YOUR-BUCKET-NAME/analytics/ml_features/'
+LOCATION 's3://bucket_name/analytics/ml_features/'
 TBLPROPERTIES ('parquet.compression'='SNAPPY');
 
 -- Add partitions
@@ -73,7 +73,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS analytics.volatility_metrics (
 )
 PARTITIONED BY (date STRING)
 STORED AS PARQUET
-LOCATION 's3://YOUR-BUCKET-NAME/analytics/volatility_metrics/'
+LOCATION 's3://bucket_name/analytics/volatility_metrics/'
 TBLPROPERTIES ('parquet.compression'='SNAPPY');
 
 -- Add partitions

@@ -25,7 +25,7 @@
         }
     },
     "alerts": {
-        "email_enabled": false,
-        "recipients": []
+        "email_enabled": true,
+        "recipients": ["octacon100@gmail.com"]
     }
 }

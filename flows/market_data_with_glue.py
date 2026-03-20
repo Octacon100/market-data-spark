@@ -112,6 +112,7 @@ def market_data_pipeline_with_glue():
 if __name__ == "__main__":
     # Run the complete pipeline with Glue
     # results = market_data_pipeline_with_glue()
-    glue_analytics_flow()
+    # glue_analytics_flow()
+    market_data_pipeline_with_glue()
     print("\n[COMPLETE] Pipeline execution complete!")
     print(f"   View results in Prefect Cloud: https://app.prefect.cloud")
