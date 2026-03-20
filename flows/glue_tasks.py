@@ -19,6 +19,45 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 # Initialize AWS clients
 glue = boto3.client('glue', region_name=AWS_REGION)
 s3 = boto3.client('s3', region_name=AWS_REGION)
+logs = boto3.client('logs', region_name=AWS_REGION)
+
+
+def fetch_glue_job_logs(job_name: str, job_run_id: str, log_type: str = "output"):
+    """
+    Fetch CloudWatch logs for a Glue job run.
+
+    Args:
+        job_name: Glue job name
+        job_run_id: Glue job run ID
+        log_type: 'output' for stdout or 'error' for stderr
+    """
+    log_group = f"/aws-glue/jobs/{log_type}"
+
+    try:
+        # Glue log streams are named with the job run ID
+        response = logs.get_log_events(
+            logGroupName=log_group,
+            logStreamName=job_run_id,
+            startFromHead=True,
+            limit=200
+        )
+
+        events = response.get('events', [])
+        if not events:
+            print(f"  [INFO] No {log_type} logs found for {job_name}")
+            return
+
+        print(f"\n  --- Glue {log_type.upper()} logs for {job_name} ---")
+        for event in events:
+            msg = event.get('message', '').rstrip()
+            if msg:
+                print(f"  {msg}")
+        print(f"  --- End of {log_type} logs ---\n")
+
+    except logs.exceptions.ResourceNotFoundException:
+        print(f"  [INFO] No {log_type} log stream found for run {job_run_id}")
+    except Exception as e:
+        print(f"  [WARN] Could not fetch {log_type} logs: {e}")
 
 
 @task(
@@ -198,7 +237,10 @@ def wait_for_glue_job(job_name: str, job_run_id: str, timeout_minutes: int = 30)
         if status == 'SUCCEEDED':
             duration = (time.time() - start_time) / 60
             print(f"  [OK] Job completed in {duration:.1f} minutes")
-            
+
+            # Fetch and display Glue job logs
+            fetch_glue_job_logs(job_name, job_run_id, "output")
+
             # Emit success event
             emit_event(
                 event="glue.job.succeeded",
@@ -221,7 +263,11 @@ def wait_for_glue_job(job_name: str, job_run_id: str, timeout_minutes: int = 30)
         elif status in ['FAILED', 'STOPPED', 'ERROR', 'TIMEOUT']:
             error_msg = job_run.get('ErrorMessage', 'Unknown error')
             print(f"  [ERROR] Job failed: {error_msg}")
-            
+
+            # Fetch and display Glue job logs
+            fetch_glue_job_logs(job_name, job_run_id, "output")
+            fetch_glue_job_logs(job_name, job_run_id, "error")
+
             # Emit failure event
             emit_event(
                 event="glue.job.failed",
