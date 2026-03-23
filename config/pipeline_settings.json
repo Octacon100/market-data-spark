@@ -27,5 +27,12 @@
     "alerts": {
         "email_enabled": true,
         "recipients": ["octacon100@gmail.com"]
+    },
+    "reddit_scanner": {
+        "subreddits": ["wallstreetbets", "stocks", "investing"],
+        "scan_lookback_hours": 24,
+        "min_mention_threshold": 2,
+        "auto_add_top_n": 5,
+        "min_mentions": 10
     }
 }

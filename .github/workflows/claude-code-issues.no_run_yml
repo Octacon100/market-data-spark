@@ -1,0 +1,37 @@
+name: Claude Code - Process Issues
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  process-issue:
+    # Only runs when the 'claude' label is added
+    if: github.event.label.name == 'claude'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          model: "claude-sonnet-4-20250514"
+          prompt: |
+            Read the issue title and body below, then implement the requested changes.
+            Create clean, well-tested code following the project's CLAUDE.md conventions.
+
+            Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}
+
+            ${{ github.event.issue.body }}
+          allowed_tools: "Read,Edit,Write,Bash,Glob,Grep"
+          max_turns: "50"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
