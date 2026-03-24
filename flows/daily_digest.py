@@ -551,17 +551,25 @@ def daily_digest_flow(bucket: str = None, signal_results: dict = None):
     trending = load_reddit_trending(bucket)
     reddit_tickers = trending.get("tickers", {})
 
-    # Step 2: Build ticker list - Reddit trending stocks are the focus
-    # Fall back to watchlist if no Reddit data
+    # Step 2: Build ticker list - watchlist + Reddit trending combined
+    watchlist = load_watchlist()
+    target_tickers = list(watchlist)  # always include watchlist
+
+    # Add Reddit trending tickers not already in watchlist
     if reddit_tickers:
-        # Sort by mention count, take top N
-        sorted_tickers = sorted(reddit_tickers.items(), key=lambda x: x[1], reverse=True)
-        target_tickers = [t for t, _ in sorted_tickers[:max_stocks]]
-        print(f"[INFO] Analyzing top {len(target_tickers)} Reddit-trending tickers")
+        sorted_reddit = sorted(reddit_tickers.items(), key=lambda x: x[1], reverse=True)
+        existing = set(target_tickers)
+        for ticker, _ in sorted_reddit:
+            if ticker not in existing:
+                target_tickers.append(ticker)
+                existing.add(ticker)
+        print(f"[INFO] Analyzing {len(watchlist)} watchlist + "
+              f"{len(target_tickers) - len(watchlist)} Reddit-trending tickers")
     else:
-        watchlist = load_watchlist()
-        target_tickers = watchlist[:max_stocks]
         print(f"[INFO] No Reddit data - analyzing {len(target_tickers)} watchlist tickers")
+
+    # Cap at max_stocks
+    target_tickers = target_tickers[:max_stocks]
 
     if not target_tickers:
         print("[WARN] No tickers to analyze")
