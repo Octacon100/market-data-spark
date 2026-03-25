@@ -34,5 +34,13 @@
         "min_mention_threshold": 2,
         "auto_add_top_n": 5,
         "min_mentions": 10
+    },
+    "daily_digest": {
+        "enabled": true,
+        "claude_model": "claude-sonnet-4-20250514",
+        "max_tokens_per_stock": 500,
+        "max_stocks": 10,
+        "schedule_hour_utc": 11,
+        "schedule_description": "7 AM ET daily"
     }
 }

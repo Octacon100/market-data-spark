@@ -7,6 +7,7 @@ from prefect import flow
 from market_data_flow import market_data_pipeline
 from emr_tasks import spark_analytics_flow
 from buy_signal_alerts import buy_signal_alert_flow
+from daily_digest import daily_digest_flow
 from datetime import datetime
 import os
 
@@ -69,13 +70,25 @@ def market_data_pipeline_with_spark():
     signal_results = buy_signal_alert_flow(bucket=os.getenv('S3_BUCKET'))
     signal_count = signal_results.get('count', 0)
 
-    # Phase 4: Summary
+    # Phase 4: Daily Digest with Claude AI Synopsis
+    print("\n" + "="*70)
+    print("[DIGEST] PHASE 4: Daily Digest with Claude AI Synopsis")
+    print("-"*70)
+
+    digest_results = daily_digest_flow(
+        bucket=os.getenv('S3_BUCKET'),
+        signal_results=signal_results,
+    )
+    digest_count = digest_results.get('stocks_analyzed', 0)
+
+    # Phase 5: Summary
     print("\n" + "="*70)
     print("[COMPLETE] PIPELINE SUMMARY")
     print("="*70)
     print(f"[OK] Data Collection: {success_count} symbols")
     print(f"[RUN] Spark Analytics: Cluster {emr_results.get('cluster_id', 'N/A')}")
     print(f"[SIGNALS] Buy Signals: {signal_count} detected")
+    print(f"[DIGEST] Claude Synopses: {digest_count} stocks analyzed")
     print(f"[WAIT] Status: Jobs running on EMR (auto-terminates when done)")
     print(f"[COST] Estimated Cost: $0.15 - $0.25")
     print("="*70 + "\n")
@@ -85,10 +98,12 @@ def market_data_pipeline_with_spark():
         'data_results': data_results,
         'emr_results': emr_results,
         'signal_results': signal_results,
+        'digest_results': digest_results,
         'summary': {
             'symbols_processed': success_count,
             'emr_cluster_id': emr_results.get('cluster_id'),
             'buy_signals_detected': signal_count,
+            'digest_stocks_analyzed': digest_count,
             'start_time': emr_results.get('start_time'),
             'message': 'Pipeline complete - EMR cluster running'
         }
