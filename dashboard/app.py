@@ -111,6 +111,8 @@ PAGES = {
     "Volatility": "volatility",
     "Reddit Trending": "reddit_trending",
     "Portfolio Overview": "portfolio_overview",
+    "Watchlist Manager": "watchlist_manager",
+    "Reddit Ignore List": "reddit_ignore_list",
 }
 
 st.sidebar.title("[CHART] Market Data")
@@ -538,6 +540,157 @@ def page_portfolio_overview():
 
 
 # ============================================================================
+# Watchlist / Ignore List Helpers
+# ============================================================================
+
+WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
+WATCHLIST_HISTORY_PATH = CONFIG_DIR / "watchlist_history.json"
+IGNORE_LIST_PATH = CONFIG_DIR / "reddit_ignore_list.json"
+IGNORE_HISTORY_PATH = CONFIG_DIR / "reddit_ignore_history.json"
+
+
+def _load_json_file(path, default=None):
+    """Load a JSON file, returning default if missing."""
+    if default is None:
+        default = []
+    if path.exists():
+        with open(path, "r") as f:
+            return json.load(f)
+    return default
+
+
+def _save_json_file(path, data):
+    """Save data to a JSON file."""
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+def _add_history_entry(history_path, ticker, action):
+    """Append a timestamped entry to a history file."""
+    history = _load_json_file(history_path)
+    history.append({
+        "ticker": ticker,
+        "action": action,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    _save_json_file(history_path, history)
+
+
+# ============================================================================
+# Page: Watchlist Manager (Issue #12)
+# ============================================================================
+
+def page_watchlist_manager():
+    st.title("[LIST] Watchlist Manager")
+    st.caption("Add and remove stock tickers from your watchlist. "
+               "All changes are tracked with timestamps.")
+
+    watchlist = _load_json_file(WATCHLIST_PATH)
+
+    # --- Add ticker ---
+    st.subheader("Add Ticker")
+    col_add, col_btn = st.columns([3, 1])
+    new_ticker = col_add.text_input(
+        "Ticker symbol", placeholder="e.g. NVDA", key="wl_add_input",
+    ).strip().upper()
+    add_clicked = col_btn.button("Add to Watchlist", key="wl_add_btn")
+
+    if add_clicked and new_ticker:
+        if new_ticker in watchlist:
+            st.warning(f"{new_ticker} is already in the watchlist.")
+        else:
+            watchlist.append(new_ticker)
+            _save_json_file(WATCHLIST_PATH, watchlist)
+            _add_history_entry(WATCHLIST_HISTORY_PATH, new_ticker, "enabled")
+            st.success(f"Added {new_ticker} to watchlist.")
+            st.rerun()
+    elif add_clicked:
+        st.warning("Enter a ticker symbol to add.")
+
+    # --- Current watchlist with remove buttons ---
+    st.subheader(f"Current Watchlist ({len(watchlist)} tickers)")
+    if not watchlist:
+        st.info("Watchlist is empty. Add a ticker above.")
+    else:
+        for i, ticker in enumerate(watchlist):
+            col_sym, col_rm = st.columns([4, 1])
+            col_sym.markdown(f"**{ticker}**")
+            if col_rm.button("Remove", key=f"wl_rm_{i}_{ticker}"):
+                watchlist.remove(ticker)
+                _save_json_file(WATCHLIST_PATH, watchlist)
+                _add_history_entry(WATCHLIST_HISTORY_PATH, ticker, "disabled")
+                st.success(f"Removed {ticker} from watchlist.")
+                st.rerun()
+
+    # --- History log ---
+    st.subheader("Change History")
+    history = _load_json_file(WATCHLIST_HISTORY_PATH)
+    if not history:
+        st.info("No history yet. Changes will appear here when you add or remove tickers.")
+    else:
+        history_df = pd.DataFrame(reversed(history))
+        history_df.columns = ["Ticker", "Action", "Timestamp"]
+        st.dataframe(history_df, use_container_width=True, hide_index=True)
+
+
+# ============================================================================
+# Page: Reddit Ignore List (Issue #13)
+# ============================================================================
+
+def page_reddit_ignore_list():
+    st.title("[BLOCK] Reddit Ignore List")
+    st.caption("Tickers on this list will be skipped during Reddit scanning. "
+               "All changes are tracked with timestamps.")
+
+    ignore_list = _load_json_file(IGNORE_LIST_PATH)
+
+    # --- Add ticker ---
+    st.subheader("Add Ticker to Ignore")
+    col_add, col_btn = st.columns([3, 1])
+    new_ticker = col_add.text_input(
+        "Ticker symbol", placeholder="e.g. WISH", key="ig_add_input",
+    ).strip().upper()
+    add_clicked = col_btn.button("Add to Ignore List", key="ig_add_btn")
+
+    if add_clicked and new_ticker:
+        if new_ticker in ignore_list:
+            st.warning(f"{new_ticker} is already on the ignore list.")
+        else:
+            ignore_list.append(new_ticker)
+            _save_json_file(IGNORE_LIST_PATH, ignore_list)
+            _add_history_entry(IGNORE_HISTORY_PATH, new_ticker, "ignored")
+            st.success(f"Added {new_ticker} to ignore list.")
+            st.rerun()
+    elif add_clicked:
+        st.warning("Enter a ticker symbol to add.")
+
+    # --- Current ignore list with remove buttons ---
+    st.subheader(f"Currently Ignored ({len(ignore_list)} tickers)")
+    if not ignore_list:
+        st.info("Ignore list is empty. Tickers added here will be skipped in Reddit scans.")
+    else:
+        for i, ticker in enumerate(ignore_list):
+            col_sym, col_rm = st.columns([4, 1])
+            col_sym.markdown(f"**{ticker}**")
+            if col_rm.button("Un-ignore", key=f"ig_rm_{i}_{ticker}"):
+                ignore_list.remove(ticker)
+                _save_json_file(IGNORE_LIST_PATH, ignore_list)
+                _add_history_entry(IGNORE_HISTORY_PATH, ticker, "un-ignored")
+                st.success(f"Removed {ticker} from ignore list.")
+                st.rerun()
+
+    # --- History log ---
+    st.subheader("Change History")
+    history = _load_json_file(IGNORE_HISTORY_PATH)
+    if not history:
+        st.info("No history yet. Changes will appear here when you add or remove tickers.")
+    else:
+        history_df = pd.DataFrame(reversed(history))
+        history_df.columns = ["Ticker", "Action", "Timestamp"]
+        st.dataframe(history_df, use_container_width=True, hide_index=True)
+
+
+# ============================================================================
 # Route pages
 # ============================================================================
 
@@ -551,3 +704,7 @@ elif PAGES[page] == "reddit_trending":
     page_reddit_trending()
 elif PAGES[page] == "portfolio_overview":
     page_portfolio_overview()
+elif PAGES[page] == "watchlist_manager":
+    page_watchlist_manager()
+elif PAGES[page] == "reddit_ignore_list":
+    page_reddit_ignore_list()

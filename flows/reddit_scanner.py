@@ -25,6 +25,15 @@ dotenv.load_dotenv()
 
 SETTINGS_PATH = Path(__file__).parent.parent / "config" / "pipeline_settings.json"
 WATCHLIST_PATH = Path(__file__).parent.parent / "config" / "watchlist.json"
+IGNORE_LIST_PATH = Path(__file__).parent.parent / "config" / "reddit_ignore_list.json"
+
+
+def load_ignore_list():
+    """Load the Reddit ignore list from config/reddit_ignore_list.json"""
+    if IGNORE_LIST_PATH.exists():
+        with open(IGNORE_LIST_PATH, "r") as f:
+            return set(json.load(f))
+    return set()
 
 
 def load_settings():
@@ -136,6 +145,10 @@ def scan_subreddit(reddit, subreddit_name, lookback_hours=24, post_limit=100):
     print(f"[INFO] Scanning r/{subreddit_name} (last {lookback_hours}h)...")
     mentions = Counter()
     cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+    ignore_set = load_ignore_list()
+
+    if ignore_set:
+        print(f"  [INFO] Ignoring {len(ignore_set)} tickers from ignore list")
 
     try:
         subreddit = reddit.subreddit(subreddit_name)
@@ -148,14 +161,14 @@ def scan_subreddit(reddit, subreddit_name, lookback_hours=24, post_limit=100):
 
             posts_scanned += 1
             text = f"{post.title} {post.selftext}"
-            tickers = extract_tickers(text)
+            tickers = extract_tickers(text, ignore_set=ignore_set)
             for ticker in tickers:
                 mentions[ticker] += 1
 
             # Also scan top-level comments
             post.comments.replace_more(limit=0)
             for comment in post.comments[:20]:
-                comment_tickers = extract_tickers(comment.body)
+                comment_tickers = extract_tickers(comment.body, ignore_set=ignore_set)
                 for ticker in comment_tickers:
                     mentions[ticker] += 1
 
@@ -168,7 +181,7 @@ def scan_subreddit(reddit, subreddit_name, lookback_hours=24, post_limit=100):
     return mentions
 
 
-def extract_tickers(text):
+def extract_tickers(text, ignore_set=None):
     """
     Extract stock tickers from text.
 
@@ -176,21 +189,26 @@ def extract_tickers(text):
     - $AAPL style (dollar sign prefix)
     - AAPL style (bare uppercase, 2-5 chars only for bare matches)
 
-    Filters out common false positives.
+    Filters out common false positives and user-configured ignore list.
 
     Args:
         text: Raw text to scan
+        ignore_set: Optional set of tickers to ignore (from reddit_ignore_list.json)
 
     Returns:
         list: Extracted ticker symbols
     """
+    if ignore_set is None:
+        ignore_set = set()
+
+    skip = FALSE_POSITIVES | ignore_set
     tickers = []
 
     # Dollar-sign tickers (high confidence, allow 1 char like $F)
     dollar_matches = TICKER_PATTERN_DOLLAR.findall(text)
     for match in dollar_matches:
         upper = match.upper()
-        if upper not in FALSE_POSITIVES:
+        if upper not in skip:
             tickers.append(upper)
 
     # Bare tickers (lower confidence, require 2-5 chars)
@@ -199,7 +217,7 @@ def extract_tickers(text):
         if len(match) < 2:
             continue
         upper = match.upper()
-        if upper not in FALSE_POSITIVES and upper not in tickers:
+        if upper not in skip and upper not in tickers:
             tickers.append(upper)
 
     return tickers

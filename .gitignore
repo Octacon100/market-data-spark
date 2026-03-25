@@ -68,3 +68,6 @@ data/
 *.json
 !config/watchlist.json
 !config/pipeline_settings.json
+!config/watchlist_history.json
+!config/reddit_ignore_list.json
+!config/reddit_ignore_history.json
