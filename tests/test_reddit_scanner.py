@@ -2,7 +2,7 @@
 
 import pytest
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 from collections import Counter
 
@@ -159,7 +159,7 @@ class TestScanSubreddit:
         mock_post = MagicMock()
         mock_post.title = "Buy $AAPL now!"
         mock_post.selftext = "TSLA is also good"
-        mock_post.created_utc = datetime.utcnow().timestamp()
+        mock_post.created_utc = datetime.now(timezone.utc).timestamp()
         mock_post.comments = MagicMock()
         mock_post.comments.replace_more = MagicMock()
         mock_post.comments.__iter__ = MagicMock(return_value=iter([]))
@@ -181,7 +181,7 @@ class TestScanSubreddit:
         old_post = MagicMock()
         old_post.title = "$AAPL old post"
         old_post.selftext = ""
-        old_post.created_utc = (datetime.utcnow() - timedelta(hours=48)).timestamp()
+        old_post.created_utc = (datetime.now(timezone.utc) - timedelta(hours=48)).timestamp()
         old_post.comments = MagicMock()
         old_post.comments.replace_more = MagicMock()
         old_post.comments.__iter__ = MagicMock(return_value=iter([]))
@@ -203,7 +203,7 @@ class TestScanSubreddit:
         mock_post = MagicMock()
         mock_post.title = "Market discussion"
         mock_post.selftext = ""
-        mock_post.created_utc = datetime.utcnow().timestamp()
+        mock_post.created_utc = datetime.now(timezone.utc).timestamp()
         mock_post.comments = MagicMock()
         mock_post.comments.replace_more = MagicMock()
         mock_post.comments.__getitem__ = MagicMock(return_value=[mock_comment])

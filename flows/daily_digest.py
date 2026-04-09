@@ -7,6 +7,8 @@ Sends a single consolidated HTML email at 7 AM ET on weekdays combining:
   - New tickers added to watchlist from Reddit
 """
 
+
+from typing import Optional
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
 import boto3
@@ -16,8 +18,11 @@ from email.message import EmailMessage
 import io
 import os
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ============================================================================
 # Configuration
@@ -85,7 +90,13 @@ def gather_buy_signals(bucket: str) -> list:
         for key in parquet_keys:
             resp = s3.get_object(Bucket=bucket, Key=key)
             buf = io.BytesIO(resp["Body"].read())
-            frames.append(pd.read_parquet(buf))
+            frame = pd.read_parquet(buf)
+            # Parquet is partitioned by symbol - inject it from the S3 key path
+            for part in key.split("/"):
+                if part.startswith("symbol="):
+                    frame["symbol"] = part.split("=", 1)[1]
+                    break
+            frames.append(frame)
 
         df = pd.concat(frames, ignore_index=True)
         df["timestamp"] = pd.to_datetime(df["timestamp"])
@@ -163,14 +174,15 @@ def gather_reddit_trending(bucket: str, top_n: int = 10) -> list:
         list of dicts with symbol, mentions, subreddits
     """
     s3 = boto3.client("s3")
-    today = date.today().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"reddit/trending/{today}.json"
 
     try:
         resp = s3.get_object(Bucket=bucket, Key=key)
         data = json.loads(resp["Body"].read())
-        trending = data if isinstance(data, list) else data.get("trending", [])
-        trending_sorted = sorted(trending, key=lambda x: x.get("mentions", 0), reverse=True)
+        tickers = data.get("tickers", {})
+        trending = [{"symbol": t, "mentions": c} for t, c in tickers.items()]
+        trending_sorted = sorted(trending, key=lambda x: x["mentions"], reverse=True)
         result = trending_sorted[:top_n]
         print(f"[OK] Reddit trending: {len(result)} tickers loaded")
         return result
@@ -226,7 +238,7 @@ def gather_price_movers(bucket: str, top_n: int = 10) -> list:
 
         # Sort by absolute price change
         change_col = None
-        for col in ["price_change_pct", "change_pct", "pct_change"]:
+        for col in ["price_change_pct", "change_pct", "pct_change", "range_pct"]:
             if col in latest.columns:
                 change_col = col
                 break
@@ -243,7 +255,7 @@ def gather_price_movers(bucket: str, top_n: int = 10) -> list:
         for _, row in top_movers.iterrows():
             mover = {
                 "symbol": row.get("symbol", ""),
-                "price": float(row.get("price", row.get("close", 0))),
+                "price": float(row.get("price", row.get("avg_price", row.get("close", 0)))),
                 "change_pct": float(row[change_col]),
             }
             if "volume" in row:
@@ -273,7 +285,7 @@ def gather_new_watchlist_additions(bucket: str) -> list:
         list of newly added ticker symbols
     """
     s3 = boto3.client("s3")
-    today = date.today().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"watchlist/history/{today}.json"
 
     current_watchlist = set(load_watchlist())
@@ -594,7 +606,7 @@ def create_digest_artifact(signals: list, trending: list, movers: list, new_addi
     description="Send a consolidated morning email with buy signals, Reddit trends, and price movers",
     log_prints=True,
 )
-def daily_digest_flow(bucket: str = None, top_n_reddit: int = 10, top_n_movers: int = 10):
+def daily_digest_flow(bucket: Optional[str] = None, top_n_reddit: int = 10, top_n_movers: int = 10):
     """
     Morning digest flow - runs at 7 AM ET on weekdays.
 
