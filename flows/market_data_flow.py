@@ -5,10 +5,10 @@ Full asset tracking and lineage in Prefect Cloud
 """
 
 from prefect import flow, task
+from prefect.utilities.annotations import allow_failure
 from prefect.assets import materialize
 from prefect.artifacts import create_link_artifact, create_markdown_artifact
 from prefect.events import emit_event
-from prefect.transactions import transaction
 import boto3
 import requests
 from datetime import datetime
@@ -173,7 +173,7 @@ def fetch_stock_price(symbol: str) -> StockData:
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=(60, 10))
         response.raise_for_status()
         data = response.json()
 
@@ -593,14 +593,29 @@ def market_data_pipeline(symbols: Optional[List[str]] = None):
 
     start_time = datetime.now()
     print(f"\n{'='*60}")
-    print(f"ðŸš€ Starting Market Data Pipeline")
+    print(f"-- Starting Market Data Pipeline")
     print(f"{'='*60}")
-    print(f"ðŸ• Timestamp: {start_time.isoformat()}")
-    print(f"ðŸ“Š Symbols: {', '.join(symbols)}")
-    print(f"ðŸ·ï¸  Version: {config.pipeline_version}")
+    print(f"-- Timestamp: {start_time.isoformat()}")
+    print(f"-- Symbols: {', '.join(symbols)}")
+    print(f"-- Version: {config.pipeline_version}")
     print(f"{'='*60}\n")
 
-    # Track results
+    # Phase 1: Fetch all prices in parallel
+    stock_futures = fetch_stock_price.map(symbols)
+
+    # Phase 2: Validate all in parallel
+    validated_futures = validate_data.map(allow_failure(stock_futures))
+
+    # Phase 3: Store all raw to S3 in parallel
+    raw_asset_futures = store_to_s3_raw.map(allow_failure(validated_futures))
+
+    # Phase 4: Process all to Parquet in parallel
+    processed_asset_futures = process_to_parquet.map(
+        allow_failure(validated_futures),
+        allow_failure(raw_asset_futures),
+    )
+
+    # Collect results
     results = {
         'successful': [],
         'failed': [],
@@ -608,38 +623,10 @@ def market_data_pipeline(symbols: Optional[List[str]] = None):
         'processed_assets': []
     }
 
-    # Process each symbol
-    for symbol in symbols:
+    for i, symbol in enumerate(symbols):
         try:
-            print(f"\n--- Processing {symbol} ---")
-
-            # Step 1: Fetch data
-            stock_data = fetch_stock_price(symbol)
-
-            # Step 2: Validate
-            validated_data = validate_data(stock_data)
-
-            # Step 3: Store raw (with transaction and asset tracking)
-            with transaction():
-                raw_asset_key = f"s3://{config.s3_bucket}/stocks/{str.lower(symbol)}"
-                raw_asset = store_to_s3_raw.with_options(
-                    assets=[raw_asset_key],
-                    log_prints=True,
-                    tags=["storage", "s3", "raw", "asset"]
-                )(validated_data)
-                results['raw_assets'].append(raw_asset)
-
-            # Step 4: Process to parquet (with transaction, asset tracking, and lineage)
-            with transaction():
-                processed_asset_key = f"s3://{config.s3_bucket}/processed/stocks/{str.lower(symbol)}"
-                processed_asset = process_to_parquet.with_options(
-                    assets=[processed_asset_key],
-                    asset_deps=[raw_asset_key],
-                    log_prints=True,
-                    tags=["processing", "parquet", "asset"]
-                )(validated_data, raw_asset)
-                results['processed_assets'].append(processed_asset)
-
+            results['raw_assets'].append(raw_asset_futures[i].result())
+            results['processed_assets'].append(processed_asset_futures[i].result())
             results['successful'].append(symbol)
             print(f"âœ… {symbol} completed successfully\n")
 
