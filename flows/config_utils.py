@@ -20,11 +20,7 @@ def _get_prefect_variable(name: str) -> Optional[str]:
 def _get_prefect_secret(name: str) -> Optional[str]:
     try:
         from prefect.blocks.system import Secret
-        try:
-            asyncio.get_running_loop()
-            return None  # inside running loop -- fall back to env var
-        except RuntimeError:
-            return asyncio.run(Secret.load(name)).get()
+        return Secret.load(name).get()
     except Exception:
         return None
 
