@@ -7,11 +7,12 @@ from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
 import boto3
-import praw
+import requests
 import re
+import time
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import Counter
 from pathlib import Path
 
@@ -58,6 +59,36 @@ def save_watchlist(watchlist):
         json.dump(watchlist, f, indent=4)
 
 
+def load_ignorelist():
+    """Load ignore list entries from config/ignorelist.json"""
+    if IGNORELIST_PATH.exists():
+        with open(IGNORELIST_PATH, "r") as f:
+            return json.load(f)
+    return []
+
+
+def get_active_ignored_tickers():
+    """
+    Return the set of tickers currently on the ignore list.
+    A ticker is active if removed_date is null.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    ignored = set()
+    for entry in load_ignorelist():
+        ticker = entry.get("ticker", "").upper()
+        added = entry.get("added_date")
+        removed = entry.get("removed_date")
+        if ticker and added and added <= today and (removed is None or removed > today):
+            ignored.add(ticker)
+    return ignored
+
+
+def save_ignorelist(ignorelist):
+    """Save ignore list entries to config/ignorelist.json"""
+    with open(IGNORELIST_PATH, "w") as f:
+        json.dump(ignorelist, f, indent=4)
+
+
 # Common false positives - words that look like tickers but aren't
 FALSE_POSITIVES = {
     "I", "A", "AM", "PM", "DD", "CEO", "CFO", "CTO", "COO",
@@ -98,46 +129,29 @@ TICKER_PATTERN_BARE = re.compile(r'\b([A-Z]{1,5})\b')
 @task(log_prints=True, tags=["reddit", "api"])
 def create_reddit_client():
     """
-    Create an authenticated Reddit client using PRAW.
-
-    Requires env vars:
-    - REDDIT_CLIENT_ID
-    - REDDIT_CLIENT_SECRET
-    - REDDIT_USER_AGENT
+    Create a requests session for Reddit's public JSON API.
+    No credentials required — uses public read-only endpoints.
 
     Returns:
-        praw.Reddit: Authenticated Reddit instance
+        requests.Session: Session with Reddit-compatible User-Agent
     """
-    client_id = os.getenv("REDDIT_CLIENT_ID", "")
-    client_secret = os.getenv("REDDIT_CLIENT_SECRET", "")
     user_agent = os.getenv("REDDIT_USER_AGENT", "market-data-scanner/1.0")
-
-    if not client_id or not client_secret:
-        raise ValueError(
-            "Reddit API credentials not set. "
-            "Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in .env"
-        )
-
-    reddit = praw.Reddit(
-        client_id=client_id,
-        client_secret=client_secret,
-        user_agent=user_agent,
-    )
-
-    print("[OK] Reddit client created")
-    return reddit
+    session = requests.Session()
+    session.headers.update({"User-Agent": user_agent})
+    print("[OK] Reddit client created (public JSON API, no credentials required)")
+    return session
 
 
 @task(log_prints=True, tags=["reddit", "scan"])
-def scan_subreddit(reddit, subreddit_name, lookback_hours=24, post_limit=100):
+def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
     """
-    Scan a subreddit for ticker mentions.
+    Scan a subreddit for ticker mentions using Reddit's public JSON API.
 
     Args:
-        reddit: Authenticated PRAW Reddit instance
+        session: requests.Session with User-Agent set
         subreddit_name: Name of subreddit to scan (without r/)
         lookback_hours: How far back to look for posts
-        post_limit: Maximum number of posts to scan
+        post_limit: Maximum number of posts to scan (max 100 per request)
 
     Returns:
         Counter: Ticker mention counts from this subreddit
@@ -151,11 +165,14 @@ def scan_subreddit(reddit, subreddit_name, lookback_hours=24, post_limit=100):
         print(f"  [INFO] Ignoring {len(ignore_set)} tickers from ignore list")
 
     try:
-        subreddit = reddit.subreddit(subreddit_name)
-        posts_scanned = 0
+        url = f"https://www.reddit.com/r/{subreddit_name}/new.json"
+        resp = session.get(url, params={"limit": min(post_limit, 100)}, timeout=10)
+        resp.raise_for_status()
+        posts = resp.json()["data"]["children"]
 
-        for post in subreddit.new(limit=post_limit):
-            post_time = datetime.utcfromtimestamp(post.created_utc)
+        for post_wrapper in posts:
+            post = post_wrapper["data"]
+            post_time = datetime.fromtimestamp(post["created_utc"], timezone.utc)
             if post_time < cutoff:
                 continue
 
@@ -172,8 +189,26 @@ def scan_subreddit(reddit, subreddit_name, lookback_hours=24, post_limit=100):
                 for ticker in comment_tickers:
                     mentions[ticker] += 1
 
+            # Fetch top-level comments for this post
+            time.sleep(0.5)  # be polite to Reddit's servers
+            comments_url = f"https://www.reddit.com/r/{subreddit_name}/comments/{post['id']}.json"
+            try:
+                cresp = session.get(comments_url, params={"limit": 20, "depth": 1}, timeout=10)
+                cresp.raise_for_status()
+                comment_listing = cresp.json()
+                if len(comment_listing) > 1:
+                    for c in comment_listing[1]["data"]["children"][:20]:
+                        body = c["data"].get("body", "")
+                        for ticker in extract_tickers(body):
+                            if ticker not in ignored:
+                                mentions[ticker] += 1
+            except Exception as ce:
+                print(f"  [WARN] Could not fetch comments for post {post['id']}: {ce}")
+
         print(f"  [OK] r/{subreddit_name}: scanned {posts_scanned} posts, "
               f"found {len(mentions)} unique tickers")
+        if ignored:
+            print(f"  [INFO] Ignored tickers filtered: {', '.join(sorted(ignored))}")
 
     except Exception as e:
         print(f"  [ERROR] Failed to scan r/{subreddit_name}: {e}")
@@ -250,7 +285,7 @@ def aggregate_mentions(subreddit_mentions, min_mentions=2):
     }
 
     results = {
-        "scan_timestamp": datetime.utcnow().isoformat(),
+        "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         "total_unique_tickers": len(filtered),
         "tickers": filtered,
         "by_subreddit": by_subreddit,
@@ -281,7 +316,7 @@ def store_trending_to_s3(results, bucket):
         str: S3 key where data was stored
     """
     s3 = boto3.client("s3")
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     s3_key = f"reddit/trending/{date_str}.json"
 
     json_data = json.dumps(results, indent=2, default=str)
@@ -355,6 +390,22 @@ def update_watchlist_from_trending(results, auto_add_top_n=5, min_mentions=10):
 
     if added:
         save_watchlist(watchlist)
+        # Write history to S3 so daily_digest can show new additions
+        bucket = os.getenv("S3_BUCKET", "")
+        if bucket:
+            try:
+                s3 = boto3.client("s3")
+                today = datetime.now(timezone.utc).date().isoformat()
+                history = {"date": today, "added": [e["ticker"] for e in added]}
+                s3.put_object(
+                    Bucket=bucket,
+                    Key=f"watchlist/history/{today}.json",
+                    Body=json.dumps(history),
+                    ContentType="application/json",
+                )
+                print(f"[OK] Watchlist history written to S3 for {today}")
+            except Exception as e:
+                print(f"[WARN] Could not write watchlist history to S3: {e}")
         print(f"[OK] Added {len(added)} ticker(s) to watchlist:")
         for entry in added:
             print(f"  + {entry['ticker']} ({entry['count']} mentions)")
@@ -383,7 +434,7 @@ def update_watchlist_from_trending(results, auto_add_top_n=5, min_mentions=10):
     no_skipped_row = "| - | - | - | None skipped |\n"
 
     artifact_md = f"""# Watchlist Update Summary
-**Timestamp:** {datetime.utcnow().isoformat()}
+**Timestamp:** {datetime.now(timezone.utc).isoformat()}
 
 ## Added ({len(added)})
 | Ticker | Mentions | Source | Status |
@@ -399,7 +450,7 @@ def update_watchlist_from_trending(results, auto_add_top_n=5, min_mentions=10):
 """
 
     create_markdown_artifact(
-        key=f"watchlist-update-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}",
+        key=f"watchlist-update-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
         markdown=artifact_md,
         description="Watchlist auto-update from Reddit trending",
     )

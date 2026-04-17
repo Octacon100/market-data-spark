@@ -12,7 +12,7 @@ import boto3
 import io
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import dotenv
@@ -324,12 +324,12 @@ def page_volatility():
 def page_reddit_trending():
     st.title("[FIRE] Reddit Trending Tickers")
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     data = load_json_from_s3(f"reddit/trending/{today}.json")
 
     if data is None:
         # Try yesterday
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
         data = load_json_from_s3(f"reddit/trending/{yesterday}.json")
         if data is None:
             st.info("No Reddit trending data found. Run the Reddit scanner flow first.")
@@ -380,7 +380,7 @@ def page_reddit_trending():
     st.subheader("Trending Over Time (Last 7 Days)")
     history = {}
     for days_ago in range(7):
-        date = (datetime.utcnow() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+        date = (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
         day_data = load_json_from_s3(f"reddit/trending/{date}.json")
         if day_data:
             history[date] = day_data.get("top_20", {})

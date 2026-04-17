@@ -37,10 +37,9 @@
     },
     "daily_digest": {
         "enabled": true,
-        "claude_model": "claude-sonnet-4-20250514",
-        "max_tokens_per_stock": 500,
-        "max_stocks": 10,
-        "schedule_hour_utc": 11,
-        "schedule_description": "7 AM ET daily"
+        "schedule": "0 7 * * 1-5",
+        "timezone": "America/New_York",
+        "top_n_reddit": 10,
+        "top_n_movers": 10
     }
 }
