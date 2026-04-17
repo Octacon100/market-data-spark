@@ -11,19 +11,20 @@ import time
 import os
 from typing import Dict, List, Optional
 from datetime import datetime
+from config_utils import resolve, make_boto3_client
 
-# Configuration from environment
-S3_BUCKET = os.getenv('S3_BUCKET')
-AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
-EMR_KEY_PAIR = os.getenv('EMR_KEY_PAIR', 'your-key-pair')
-USE_SPOT_INSTANCES = os.getenv('USE_SPOT_INSTANCES', 'True').lower() == 'true'
-SPOT_BID_PRICE = os.getenv('SPOT_BID_PRICE', '0.15')
-EMR_RELEASE_LABEL = os.getenv('EMR_RELEASE_LABEL', 'emr-7.3.0')
+# Configuration
+S3_BUCKET = resolve('s3-bucket', 'S3_BUCKET')
+AWS_REGION = resolve('aws-region', 'AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')
+EMR_KEY_PAIR = resolve('emr-key-pair', 'EMR_KEY_PAIR') or 'your-key-pair'
+USE_SPOT_INSTANCES = (resolve('use-spot-instances', 'USE_SPOT_INSTANCES') or 'True').lower() == 'true'
+SPOT_BID_PRICE = resolve('spot-bid-price', 'SPOT_BID_PRICE') or '0.15'
+EMR_RELEASE_LABEL = resolve('emr-release-label', 'EMR_RELEASE_LABEL') or 'emr-7.3.0'
 
 # Initialize AWS clients
-emr = boto3.client('emr', region_name=AWS_REGION)
-s3 = boto3.client('s3', region_name=AWS_REGION)
-ec2 = boto3.client('ec2', region_name=AWS_REGION)
+emr = make_boto3_client('emr', region=AWS_REGION)
+s3 = make_boto3_client('s3', region=AWS_REGION)
+ec2 = make_boto3_client('ec2', region=AWS_REGION)
 
 
 def get_default_subnet() -> Optional[str]:

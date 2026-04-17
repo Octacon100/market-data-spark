@@ -11,15 +11,16 @@ import time
 import os
 from typing import Dict, Optional
 from datetime import datetime
+from config_utils import resolve, make_boto3_client
 
 # Configuration
-S3_BUCKET = os.getenv('S3_BUCKET')
-AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
+S3_BUCKET = resolve('s3-bucket', 'S3_BUCKET')
+AWS_REGION = resolve('aws-region', 'AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')
 
 # Initialize AWS clients
-glue = boto3.client('glue', region_name=AWS_REGION)
-s3 = boto3.client('s3', region_name=AWS_REGION)
-logs = boto3.client('logs', region_name=AWS_REGION)
+glue = make_boto3_client('glue', region=AWS_REGION)
+s3 = make_boto3_client('s3', region=AWS_REGION)
+logs = make_boto3_client('logs', region=AWS_REGION)
 
 
 def fetch_glue_job_logs(job_name: str, job_run_id: str, log_type: str = "output"):

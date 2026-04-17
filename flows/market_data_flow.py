@@ -20,8 +20,10 @@ from typing import List, Optional
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import dotenv
+from config_utils import resolve, make_boto3_client
 
 dotenv.load_dotenv()
+
 
 # ============================================================================
 # Watchlist Loader
@@ -45,12 +47,26 @@ def load_watchlist() -> list:
 @dataclass
 class PipelineConfig:
     """Centralized configuration"""
-    alpha_vantage_key: str = os.getenv('ALPHA_VANTAGE_API_KEY', '')
-    s3_bucket: str = os.getenv('S3_BUCKET', '')
+    alpha_vantage_key: str = ''
+    s3_bucket: str = ''
+    aws_access_key_id: str = ''
+    aws_secret_access_key: str = ''
+    aws_region: str = ''
     symbols: List[str] = None
     pipeline_version: str = "1.0.0"
 
     def __post_init__(self):
+        if not self.alpha_vantage_key:
+            self.alpha_vantage_key = resolve('alpha-vantage-api-key', 'ALPHA_VANTAGE_API_KEY', is_secret=True)
+        if not self.s3_bucket:
+            self.s3_bucket = resolve('s3-bucket', 'S3_BUCKET')
+        if not self.aws_access_key_id:
+            self.aws_access_key_id = resolve('aws-access-key-id', 'AWS_ACCESS_KEY_ID', is_secret=True)
+        if not self.aws_secret_access_key:
+            self.aws_secret_access_key = resolve('aws-secret-access-key', 'AWS_SECRET_ACCESS_KEY', is_secret=True)
+        if not self.aws_region:
+            self.aws_region = resolve('aws-region', 'AWS_DEFAULT_REGION') or os.getenv('AWS_REGION', 'us-east-1')
+
         if self.symbols is None:
             # Priority: 1) SYMBOLS env var  2) watchlist.json  3) hardcoded default
             env_symbols = os.getenv('SYMBOLS', '')
@@ -65,12 +81,19 @@ class PipelineConfig:
 
         # Validation
         if not self.alpha_vantage_key:
-            raise ValueError("ALPHA_VANTAGE_API_KEY environment variable not set")
+            raise ValueError("ALPHA_VANTAGE_API_KEY not set in env or Prefect Secrets")
         if not self.s3_bucket:
-            raise ValueError("S3_BUCKET environment variable not set")
+            raise ValueError("S3_BUCKET not set in env or Prefect Variables")
+
+    def make_s3_client(self):
+        kwargs = {'region_name': self.aws_region}
+        if self.aws_access_key_id and self.aws_secret_access_key:
+            kwargs['aws_access_key_id'] = self.aws_access_key_id
+            kwargs['aws_secret_access_key'] = self.aws_secret_access_key
+        return boto3.client('s3', **kwargs)
 
 config = PipelineConfig()
-s3 = boto3.client('s3')
+s3 = config.make_s3_client()
 
 
 # ============================================================================
