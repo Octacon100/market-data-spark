@@ -17,6 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 import dotenv
+from config_utils import resolve, make_boto3_client
 
 dotenv.load_dotenv()
 
@@ -315,7 +316,7 @@ def store_trending_to_s3(results, bucket):
     Returns:
         str: S3 key where data was stored
     """
-    s3 = boto3.client("s3")
+    s3 = make_boto3_client("s3")
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     s3_key = f"reddit/trending/{date_str}.json"
 
@@ -391,10 +392,10 @@ def update_watchlist_from_trending(results, auto_add_top_n=5, min_mentions=10):
     if added:
         save_watchlist(watchlist)
         # Write history to S3 so daily_digest can show new additions
-        bucket = os.getenv("S3_BUCKET", "")
+        bucket = resolve('s3-bucket', 'S3_BUCKET')
         if bucket:
             try:
-                s3 = boto3.client("s3")
+                s3 = make_boto3_client("s3")
                 today = datetime.now(timezone.utc).date().isoformat()
                 history = {"date": today, "added": [e["ticker"] for e in added]}
                 s3.put_object(
@@ -492,7 +493,7 @@ def reddit_scanner_flow(
         bucket: S3 bucket name (defaults to S3_BUCKET env var)
     """
     if bucket is None:
-        bucket = os.getenv("S3_BUCKET", "")
+        bucket = resolve('s3-bucket', 'S3_BUCKET')
         if not bucket:
             print("[ERROR] S3_BUCKET not set")
             return {"error": "S3_BUCKET not set"}

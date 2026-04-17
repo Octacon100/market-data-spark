@@ -15,6 +15,7 @@ import os
 import json
 from datetime import datetime
 from pathlib import Path
+from config_utils import resolve, make_boto3_client
 
 # ============================================================================
 # Configuration
@@ -59,7 +60,7 @@ def detect_buy_signals(bucket: str) -> list:
         print("[INFO] Buy signal detection is disabled in pipeline_settings.json")
         return []
 
-    s3 = boto3.client("s3")
+    s3 = make_boto3_client("s3")
 
     # Read ML features from S3
     input_prefix = "analytics/ml_features/"
@@ -216,9 +217,9 @@ def send_email_alerts(signals: list):
         print("[INFO] Email alerts disabled in pipeline_settings.json - set alerts.email_enabled to true")
         return
 
-    email_from = os.getenv("ALERT_EMAIL_FROM", "")
-    email_to = os.getenv("ALERT_EMAIL_TO", "")
-    app_password = os.getenv("GMAIL_APP_PASSWORD", "")
+    email_from = resolve('alert-email-from', 'ALERT_EMAIL_FROM')
+    email_to = resolve('alert-email-to', 'ALERT_EMAIL_TO')
+    app_password = resolve('gmail-app-password', 'GMAIL_APP_PASSWORD', is_secret=True)
 
     if not all([email_from, email_to, app_password]):
         print("[WARN] Gmail not configured - need ALERT_EMAIL_FROM, ALERT_EMAIL_TO, GMAIL_APP_PASSWORD in .env")
@@ -395,7 +396,7 @@ def buy_signal_alert_flow(bucket: str = None):
         dict: Signal detection results
     """
     if bucket is None:
-        bucket = os.getenv("S3_BUCKET", "")
+        bucket = resolve('s3-bucket', 'S3_BUCKET')
         if not bucket:
             print("[ERROR] S3_BUCKET not set")
             return {"signals": [], "error": "S3_BUCKET not set"}

@@ -21,6 +21,7 @@ import json
 from datetime import datetime, date, timezone
 from pathlib import Path
 from dotenv import load_dotenv
+from config_utils import resolve, make_boto3_client
 
 load_dotenv()
 
@@ -71,7 +72,7 @@ def gather_buy_signals(bucket: str) -> list:
         print("[INFO] Buy signals disabled in pipeline_settings.json")
         return []
 
-    s3 = boto3.client("s3")
+    s3 = make_boto3_client("s3")
     prefix = "analytics/ml_features/"
 
     try:
@@ -173,7 +174,7 @@ def gather_reddit_trending(bucket: str, top_n: int = 10) -> list:
     Returns:
         list of dicts with symbol, mentions, subreddits
     """
-    s3 = boto3.client("s3")
+    s3 = make_boto3_client("s3")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"reddit/trending/{today}.json"
 
@@ -207,7 +208,7 @@ def gather_price_movers(bucket: str, top_n: int = 10) -> list:
     Returns:
         list of dicts with symbol, price, price_change_pct, volume, sorted by abs(change)
     """
-    s3 = boto3.client("s3")
+    s3 = make_boto3_client("s3")
     prefix = "analytics/daily_stats/"
 
     try:
@@ -284,7 +285,7 @@ def gather_new_watchlist_additions(bucket: str) -> list:
     Returns:
         list of newly added ticker symbols
     """
-    s3 = boto3.client("s3")
+    s3 = make_boto3_client("s3")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"watchlist/history/{today}.json"
 
@@ -400,9 +401,9 @@ def compose_and_send_digest(
         print("[INFO] Email disabled in pipeline_settings.json")
         return
 
-    email_from = os.getenv("ALERT_EMAIL_FROM", "")
-    email_to = os.getenv("ALERT_EMAIL_TO", "")
-    app_password = os.getenv("GMAIL_APP_PASSWORD", "")
+    email_from = resolve('alert-email-from', 'ALERT_EMAIL_FROM')
+    email_to = resolve('alert-email-to', 'ALERT_EMAIL_TO')
+    app_password = resolve('gmail-app-password', 'GMAIL_APP_PASSWORD', is_secret=True)
 
     if not all([email_from, email_to, app_password]):
         print("[WARN] Gmail not configured - need ALERT_EMAIL_FROM, ALERT_EMAIL_TO, GMAIL_APP_PASSWORD")
@@ -624,7 +625,7 @@ def daily_digest_flow(bucket: Optional[str] = None, top_n_reddit: int = 10, top_
         top_n_movers: How many price movers to include
     """
     if bucket is None:
-        bucket = os.getenv("S3_BUCKET", "")
+        bucket = resolve('s3-bucket', 'S3_BUCKET')
         if not bucket:
             print("[ERROR] S3_BUCKET not set")
             return {"error": "S3_BUCKET not set"}
