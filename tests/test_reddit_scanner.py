@@ -151,76 +151,89 @@ class TestAggregateMentions:
 # ============================================================================
 
 class TestScanSubreddit:
-    """Test subreddit scanning with mocked PRAW."""
+    """Test subreddit scanning with mocked requests.Session (JSON API)."""
 
-    def test_scan_returns_counter(self):
+    def _make_mock_session(self, posts_json, comments_json=None):
+        """Build a mock session that returns posts and optionally comments."""
+        session = MagicMock()
+
+        if comments_json is None:
+            comments_json = [{"data": {"children": []}}, {"data": {"children": []}}]
+
+        post_resp = MagicMock()
+        post_resp.json.return_value = {"data": {"children": posts_json}}
+        post_resp.raise_for_status = MagicMock()
+
+        comment_resp = MagicMock()
+        comment_resp.json.return_value = comments_json
+        comment_resp.raise_for_status = MagicMock()
+
+        def get_side_effect(url, **kwargs):
+            if "/comments/" in url:
+                return comment_resp
+            return post_resp
+
+        session.get.side_effect = get_side_effect
+        return session
+
+    @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
+    @patch("flows.reddit_scanner.time")
+    def test_scan_returns_counter(self, mock_time, mock_ignore):
         """Scanning returns a Counter of ticker mentions."""
-        mock_reddit = MagicMock()
-        mock_post = MagicMock()
-        mock_post.title = "Buy $AAPL now!"
-        mock_post.selftext = "TSLA is also good"
-        mock_post.created_utc = datetime.now(timezone.utc).timestamp()
-        mock_post.comments = MagicMock()
-        mock_post.comments.replace_more = MagicMock()
-        mock_post.comments.__iter__ = MagicMock(return_value=iter([]))
-        mock_post.comments.__getitem__ = MagicMock(return_value=[])
-
-        mock_subreddit = MagicMock()
-        mock_subreddit.new.return_value = [mock_post]
-        mock_reddit.subreddit.return_value = mock_subreddit
-
-        result = scan_subreddit.fn(mock_reddit, "wallstreetbets", lookback_hours=24)
+        posts = [{"data": {
+            "id": "abc",
+            "title": "Buy $AAPL now!",
+            "selftext": "TSLA is also good",
+            "created_utc": datetime.now(timezone.utc).timestamp(),
+        }}]
+        session = self._make_mock_session(posts)
+        result = scan_subreddit.fn(session, "wallstreetbets", lookback_hours=24)
 
         assert isinstance(result, Counter)
         assert "AAPL" in result
         assert "TSLA" in result
 
-    def test_scan_filters_old_posts(self):
+    @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
+    @patch("flows.reddit_scanner.time")
+    def test_scan_filters_old_posts(self, mock_time, mock_ignore):
         """Posts older than lookback_hours are skipped."""
-        mock_reddit = MagicMock()
-        old_post = MagicMock()
-        old_post.title = "$AAPL old post"
-        old_post.selftext = ""
-        old_post.created_utc = (datetime.now(timezone.utc) - timedelta(hours=48)).timestamp()
-        old_post.comments = MagicMock()
-        old_post.comments.replace_more = MagicMock()
-        old_post.comments.__iter__ = MagicMock(return_value=iter([]))
-        old_post.comments.__getitem__ = MagicMock(return_value=[])
-
-        mock_subreddit = MagicMock()
-        mock_subreddit.new.return_value = [old_post]
-        mock_reddit.subreddit.return_value = mock_subreddit
-
-        result = scan_subreddit.fn(mock_reddit, "stocks", lookback_hours=24)
+        posts = [{"data": {
+            "id": "old1",
+            "title": "$AAPL old post",
+            "selftext": "",
+            "created_utc": (datetime.now(timezone.utc) - timedelta(hours=48)).timestamp(),
+        }}]
+        session = self._make_mock_session(posts)
+        result = scan_subreddit.fn(session, "stocks", lookback_hours=24)
         assert "AAPL" not in result
 
-    def test_scan_includes_comments(self):
+    @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
+    @patch("flows.reddit_scanner.time")
+    def test_scan_includes_comments(self, mock_time, mock_ignore):
         """Ticker mentions in comments are counted."""
-        mock_reddit = MagicMock()
-        mock_comment = MagicMock()
-        mock_comment.body = "$NVDA to the moon"
-
-        mock_post = MagicMock()
-        mock_post.title = "Market discussion"
-        mock_post.selftext = ""
-        mock_post.created_utc = datetime.now(timezone.utc).timestamp()
-        mock_post.comments = MagicMock()
-        mock_post.comments.replace_more = MagicMock()
-        mock_post.comments.__getitem__ = MagicMock(return_value=[mock_comment])
-
-        mock_subreddit = MagicMock()
-        mock_subreddit.new.return_value = [mock_post]
-        mock_reddit.subreddit.return_value = mock_subreddit
-
-        result = scan_subreddit.fn(mock_reddit, "investing", lookback_hours=24)
+        posts = [{"data": {
+            "id": "post1",
+            "title": "Market discussion",
+            "selftext": "",
+            "created_utc": datetime.now(timezone.utc).timestamp(),
+        }}]
+        comments_json = [
+            {"data": {"children": []}},
+            {"data": {"children": [
+                {"data": {"body": "$NVDA to the moon"}},
+            ]}},
+        ]
+        session = self._make_mock_session(posts, comments_json)
+        result = scan_subreddit.fn(session, "investing", lookback_hours=24)
         assert "NVDA" in result
 
-    def test_scan_handles_api_error(self):
+    @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
+    def test_scan_handles_api_error(self, mock_ignore):
         """API errors are caught and return empty Counter."""
-        mock_reddit = MagicMock()
-        mock_reddit.subreddit.side_effect = Exception("Reddit API error")
+        session = MagicMock()
+        session.get.side_effect = Exception("Reddit API error")
 
-        result = scan_subreddit.fn(mock_reddit, "wallstreetbets", lookback_hours=24)
+        result = scan_subreddit.fn(session, "wallstreetbets", lookback_hours=24)
         assert isinstance(result, Counter)
         assert len(result) == 0
 
@@ -245,7 +258,9 @@ class TestUpdateWatchlist:
 
         with patch("flows.reddit_scanner.WATCHLIST_PATH", watchlist_file), \
              patch("flows.reddit_scanner.SETTINGS_PATH", settings_file), \
-             patch("flows.reddit_scanner.create_markdown_artifact"):
+             patch("flows.reddit_scanner.create_markdown_artifact"), \
+             patch("flows.reddit_scanner.resolve", return_value=""), \
+             patch("flows.reddit_scanner.make_boto3_client"):
             summary = update_watchlist_from_trending.fn(results, auto_add_top_n=5, min_mentions=10)
 
         assert len(summary["added"]) == 2  # NVDA and TSLA
@@ -269,7 +284,9 @@ class TestUpdateWatchlist:
 
         with patch("flows.reddit_scanner.WATCHLIST_PATH", watchlist_file), \
              patch("flows.reddit_scanner.SETTINGS_PATH", settings_file), \
-             patch("flows.reddit_scanner.create_markdown_artifact"):
+             patch("flows.reddit_scanner.create_markdown_artifact"), \
+             patch("flows.reddit_scanner.resolve", return_value=""), \
+             patch("flows.reddit_scanner.make_boto3_client"):
             summary = update_watchlist_from_trending.fn(results, auto_add_top_n=5, min_mentions=10)
 
         assert len(summary["added"]) == 0
@@ -287,7 +304,9 @@ class TestUpdateWatchlist:
 
         with patch("flows.reddit_scanner.WATCHLIST_PATH", watchlist_file), \
              patch("flows.reddit_scanner.SETTINGS_PATH", settings_file), \
-             patch("flows.reddit_scanner.create_markdown_artifact"):
+             patch("flows.reddit_scanner.create_markdown_artifact"), \
+             patch("flows.reddit_scanner.resolve", return_value=""), \
+             patch("flows.reddit_scanner.make_boto3_client"):
             summary = update_watchlist_from_trending.fn(results, auto_add_top_n=5, min_mentions=10)
 
         assert len(summary["added"]) == 0
@@ -304,7 +323,9 @@ class TestUpdateWatchlist:
 
         with patch("flows.reddit_scanner.WATCHLIST_PATH", watchlist_file), \
              patch("flows.reddit_scanner.SETTINGS_PATH", settings_file), \
-             patch("flows.reddit_scanner.create_markdown_artifact"):
+             patch("flows.reddit_scanner.create_markdown_artifact"), \
+             patch("flows.reddit_scanner.resolve", return_value=""), \
+             patch("flows.reddit_scanner.make_boto3_client"):
             update_watchlist_from_trending.fn(results, auto_add_top_n=5, min_mentions=10)
 
         updated = json.loads(watchlist_file.read_text())
@@ -329,7 +350,9 @@ class TestUpdateWatchlist:
 
         with patch("flows.reddit_scanner.WATCHLIST_PATH", watchlist_file), \
              patch("flows.reddit_scanner.SETTINGS_PATH", settings_file), \
-             patch("flows.reddit_scanner.create_markdown_artifact"):
+             patch("flows.reddit_scanner.create_markdown_artifact"), \
+             patch("flows.reddit_scanner.resolve", return_value=""), \
+             patch("flows.reddit_scanner.make_boto3_client"):
             summary = update_watchlist_from_trending.fn(results, auto_add_top_n=3, min_mentions=10)
 
         # Only top 3 should be considered
@@ -350,8 +373,7 @@ class TestStoreTrendingToS3:
         mock_s3 = MagicMock()
         results = {"tickers": {"AAPL": 10}, "total_unique_tickers": 1}
 
-        with patch("flows.reddit_scanner.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+        with patch("flows.reddit_scanner.make_boto3_client", return_value=mock_s3):
             s3_key = store_trending_to_s3.fn(results, bucket="test-bucket")
 
         assert s3_key.startswith("reddit/trending/")
@@ -367,8 +389,7 @@ class TestStoreTrendingToS3:
         mock_s3 = MagicMock()
         mock_s3.put_object.side_effect = Exception("S3 error")
 
-        with patch("flows.reddit_scanner.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+        with patch("flows.reddit_scanner.make_boto3_client", return_value=mock_s3):
             with pytest.raises(Exception, match="S3 error"):
                 store_trending_to_s3.fn({"tickers": {}}, bucket="test-bucket")
 
@@ -380,14 +401,16 @@ class TestStoreTrendingToS3:
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
-    def test_empty_reddit_response(self):
+    @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
+    def test_empty_reddit_response(self, mock_ignore):
         """Empty subreddit (no posts) returns empty Counter."""
-        mock_reddit = MagicMock()
-        mock_subreddit = MagicMock()
-        mock_subreddit.new.return_value = []
-        mock_reddit.subreddit.return_value = mock_subreddit
+        session = MagicMock()
+        resp = MagicMock()
+        resp.json.return_value = {"data": {"children": []}}
+        resp.raise_for_status = MagicMock()
+        session.get.return_value = resp
 
-        result = scan_subreddit.fn(mock_reddit, "empty_sub", lookback_hours=24)
+        result = scan_subreddit.fn(session, "empty_sub", lookback_hours=24)
         assert isinstance(result, Counter)
         assert len(result) == 0
 
