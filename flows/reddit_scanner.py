@@ -60,34 +60,10 @@ def save_watchlist(watchlist):
         json.dump(watchlist, f, indent=4)
 
 
-def load_ignorelist():
-    """Load ignore list entries from config/ignorelist.json"""
-    if IGNORELIST_PATH.exists():
-        with open(IGNORELIST_PATH, "r") as f:
-            return json.load(f)
-    return []
-
-
-def get_active_ignored_tickers():
-    """
-    Return the set of tickers currently on the ignore list.
-    A ticker is active if removed_date is null.
-    """
-    today = datetime.now(timezone.utc).date().isoformat()
-    ignored = set()
-    for entry in load_ignorelist():
-        ticker = entry.get("ticker", "").upper()
-        added = entry.get("added_date")
-        removed = entry.get("removed_date")
-        if ticker and added and added <= today and (removed is None or removed > today):
-            ignored.add(ticker)
-    return ignored
-
-
-def save_ignorelist(ignorelist):
-    """Save ignore list entries to config/ignorelist.json"""
-    with open(IGNORELIST_PATH, "w") as f:
-        json.dump(ignorelist, f, indent=4)
+def save_ignore_list(ignore_list):
+    """Save ignore list to config/reddit_ignore_list.json"""
+    with open(IGNORE_LIST_PATH, "w") as f:
+        json.dump(list(ignore_list), f, indent=4)
 
 
 # Common false positives - words that look like tickers but aren't
@@ -159,11 +135,13 @@ def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
     """
     print(f"[INFO] Scanning r/{subreddit_name} (last {lookback_hours}h)...")
     mentions = Counter()
-    cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
     ignore_set = load_ignore_list()
 
     if ignore_set:
         print(f"  [INFO] Ignoring {len(ignore_set)} tickers from ignore list")
+
+    posts_scanned = 0
 
     try:
         url = f"https://www.reddit.com/r/{subreddit_name}/new.json"
@@ -178,20 +156,13 @@ def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
                 continue
 
             posts_scanned += 1
-            text = f"{post.title} {post.selftext}"
+            text = f"{post.get('title', '')} {post.get('selftext', '')}"
             tickers = extract_tickers(text, ignore_set=ignore_set)
             for ticker in tickers:
                 mentions[ticker] += 1
 
-            # Also scan top-level comments
-            post.comments.replace_more(limit=0)
-            for comment in post.comments[:20]:
-                comment_tickers = extract_tickers(comment.body, ignore_set=ignore_set)
-                for ticker in comment_tickers:
-                    mentions[ticker] += 1
-
             # Fetch top-level comments for this post
-            time.sleep(0.5)  # be polite to Reddit's servers
+            time.sleep(0.5)
             comments_url = f"https://www.reddit.com/r/{subreddit_name}/comments/{post['id']}.json"
             try:
                 cresp = session.get(comments_url, params={"limit": 20, "depth": 1}, timeout=10)
@@ -200,16 +171,15 @@ def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
                 if len(comment_listing) > 1:
                     for c in comment_listing[1]["data"]["children"][:20]:
                         body = c["data"].get("body", "")
-                        for ticker in extract_tickers(body):
-                            if ticker not in ignored:
-                                mentions[ticker] += 1
+                        for ticker in extract_tickers(body, ignore_set=ignore_set):
+                            mentions[ticker] += 1
             except Exception as ce:
                 print(f"  [WARN] Could not fetch comments for post {post['id']}: {ce}")
 
         print(f"  [OK] r/{subreddit_name}: scanned {posts_scanned} posts, "
               f"found {len(mentions)} unique tickers")
-        if ignored:
-            print(f"  [INFO] Ignored tickers filtered: {', '.join(sorted(ignored))}")
+        if ignore_set:
+            print(f"  [INFO] Ignored tickers filtered: {', '.join(sorted(ignore_set))}")
 
     except Exception as e:
         print(f"  [ERROR] Failed to scan r/{subreddit_name}: {e}")

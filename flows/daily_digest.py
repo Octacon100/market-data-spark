@@ -563,6 +563,10 @@ def create_digest_artifact(signals: list, trending: list, movers: list, new_addi
 
     additions_list = ", ".join(new_additions) if new_additions else "None"
 
+    no_signals_row = "| - | No signals | - | - | - |\n"
+    no_movers_row = "| - | No data | - |\n"
+    no_reddit_row = "| - | No data |\n"
+
     markdown = f"""# Daily Digest - {today_str}
 **Generated:** {now_str}
 
@@ -570,19 +574,19 @@ def create_digest_artifact(signals: list, trending: list, movers: list, new_addi
 
 | Symbol | Signal | Detail | Price | Strength |
 |--------|--------|--------|-------|----------|
-{signal_rows if signal_rows else "| - | No signals | - | - | - |\n"}
+{signal_rows if signal_rows else no_signals_row}
 
 ## Price Movers (Top {len(movers)})
 
 | Symbol | Price | Change |
 |--------|-------|--------|
-{mover_rows if mover_rows else "| - | No data | - |\n"}
+{mover_rows if mover_rows else no_movers_row}
 
 ## Reddit Trending (Top {len(trending)})
 
 | Symbol | Mentions |
 |--------|----------|
-{reddit_rows if reddit_rows else "| - | No data |\n"}
+{reddit_rows if reddit_rows else no_reddit_row}
 
 ## New Watchlist Additions
 {additions_list}

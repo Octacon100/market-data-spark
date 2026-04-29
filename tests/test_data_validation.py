@@ -1,16 +1,13 @@
 """Tests for data validation logic in flows/market_data_flow.py"""
 
 import pytest
+import sys
 from unittest.mock import patch, MagicMock
 from dataclasses import dataclass
 
 
-# Import after patching to avoid PipelineConfig __post_init__ validation
-# which requires env vars. We patch the module-level config creation.
-
 def _make_stock_data(**overrides):
     """Create a StockData instance with sensible defaults."""
-    # Lazy import to avoid module-level config validation
     from flows.market_data_flow import StockData
     defaults = {
         "symbol": "TEST",
@@ -30,19 +27,32 @@ def _make_stock_data(**overrides):
 
 @pytest.fixture(autouse=True)
 def mock_pipeline_config():
-    """Patch the module-level config and s3 client so imports don't fail."""
-    mock_config = MagicMock()
-    mock_config.alpha_vantage_key = "test-key"
-    mock_config.s3_bucket = "test-bucket"
-    mock_config.symbols = ["TEST"]
-    mock_config.pipeline_version = "1.0.0"
+    """Patch resolve and make_boto3_client before market_data_flow imports them."""
+    # If the module hasn't been imported yet, patch config_utils before it loads
+    mock_resolve = lambda name, env, **kw: {
+        'alpha-vantage-api-key': 'test-key',
+        's3-bucket': 'test-bucket',
+        'aws-access-key-id': '',
+        'aws-secret-access-key': '',
+        'aws-region': 'us-east-1',
+    }.get(name, '')
 
-    with patch.dict("os.environ", {
-        "ALPHA_VANTAGE_API_KEY": "test-key",
-        "S3_BUCKET": "test-bucket",
-    }):
-        # Need to patch before import resolves
+    with patch("config_utils.resolve", side_effect=mock_resolve), \
+         patch("config_utils.make_boto3_client", return_value=MagicMock()):
+
+        # Force re-import if already cached with bad config
+        for mod_name in list(sys.modules.keys()):
+            if 'market_data_flow' in mod_name:
+                del sys.modules[mod_name]
+
         import flows.market_data_flow as mdflow
+
+        mock_config = MagicMock()
+        mock_config.alpha_vantage_key = "test-key"
+        mock_config.s3_bucket = "test-bucket"
+        mock_config.symbols = ["TEST"]
+        mock_config.pipeline_version = "1.0.0"
+
         original_config = mdflow.config
         original_s3 = mdflow.s3
         mdflow.config = mock_config

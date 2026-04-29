@@ -42,8 +42,7 @@ class TestGoldenCross:
         mock_s3 = _mock_s3_with_dataframe(sample_ml_features_df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         golden = [s for s in signals if s["signal"] == "Golden Cross"]
@@ -59,8 +58,7 @@ class TestGoldenCross:
         mock_s3 = _mock_s3_with_dataframe(sample_ml_features_df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         golden = [s for s in signals if s["signal"] == "Golden Cross"]
@@ -79,8 +77,7 @@ class TestGoldenCross:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         golden = [s for s in signals if s["signal"] == "Golden Cross"]
@@ -95,8 +92,7 @@ class TestMomentumSurge:
         mock_s3 = _mock_s3_with_dataframe(sample_ml_features_df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         momentum = [s for s in signals if s["signal"] == "Momentum Surge"]
@@ -118,8 +114,7 @@ class TestMomentumSurge:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         momentum = [s for s in signals if s["signal"] == "Momentum Surge"]
@@ -139,8 +134,7 @@ class TestMomentumSurge:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         momentum = [s for s in signals if s["signal"] == "Momentum Surge"]
@@ -163,8 +157,7 @@ class TestOversoldBounce:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         bounce = [s for s in signals if s["signal"] == "Oversold Bounce"]
@@ -185,8 +178,7 @@ class TestOversoldBounce:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         bounce = [s for s in signals if s["signal"] == "Oversold Bounce"]
@@ -201,8 +193,7 @@ class TestLowVolUptrend:
         mock_s3 = _mock_s3_with_dataframe(sample_ml_features_df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         low_vol = [s for s in signals if s["signal"] == "Low Vol Uptrend"]
@@ -223,8 +214,7 @@ class TestLowVolUptrend:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         low_vol = [s for s in signals if s["signal"] == "Low Vol Uptrend"]
@@ -249,8 +239,7 @@ class TestEdgeCases:
         mock_s3.get_paginator.return_value = mock_paginator
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         assert signals == []
@@ -265,8 +254,7 @@ class TestEdgeCases:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         assert signals == []
@@ -277,8 +265,7 @@ class TestEdgeCases:
         mock_s3.get_paginator.side_effect = Exception("S3 connection failed")
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         assert signals == []
@@ -297,8 +284,7 @@ class TestEdgeCases:
         mock_s3 = _mock_s3_with_dataframe(df)
 
         with patch("flows.buy_signal_alerts.load_settings", return_value=all_rules_enabled), \
-             patch("flows.buy_signal_alerts.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+             patch("flows.buy_signal_alerts.make_boto3_client", return_value=mock_s3):
             signals = detect_buy_signals.fn(bucket="test-bucket")
 
         # Should get: golden_cross, momentum_surge, oversold_bounce, low_vol_uptrend
