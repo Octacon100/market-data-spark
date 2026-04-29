@@ -12,6 +12,7 @@ from prefect.events import emit_event
 import boto3
 import requests
 from datetime import datetime
+import time
 import json
 import pandas as pd
 import io
@@ -600,14 +601,22 @@ def market_data_pipeline(symbols: Optional[List[str]] = None):
     print(f"-- Version: {config.pipeline_version}")
     print(f"{'='*60}\n")
 
-    # Phase 1: Fetch all prices in parallel
-    stock_futures = fetch_stock_price.map(symbols)
+    # Phase 1: Fetch all prices in parallel -- Do this when were on a paid API tier without strict rate limits
+    # stock_futures = fetch_stock_price.map(symbols)
+
+    # Phase 1: Fetch sequentially — Alpha Vantage free tier is 5 calls/min (12s gap)
+    stock_data_list = []
+    for i, symbol in enumerate(symbols):
+        if i > 0:
+            time.sleep(12)
+        stock_data_list.append(fetch_stock_price(symbol))
 
     # Phase 2: Validate all in parallel
-    validated_futures = validate_data.map(allow_failure(stock_futures))
+    validated_futures = validate_data.map(allow_failure(stock_data_list))
 
     # Phase 3: Store all raw to S3 in parallel
     raw_asset_futures = store_to_s3_raw.map(allow_failure(validated_futures))
+
 
     # Phase 4: Process all to Parquet in parallel
     processed_asset_futures = process_to_parquet.map(
