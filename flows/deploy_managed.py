@@ -8,7 +8,7 @@ from prefect.client.schemas.schedules import CronSchedule
 from prefect.runner.storage import GitRepository
 
 """
-Deploy market data flows to Prefect Cloud (managed workers).
+Deploy market data flows to Prefect Cloud with a local process worker.
 
 Deployments:
   reddit-ticker-scanner       - Every 6 hours
@@ -20,6 +20,12 @@ Note: market-data-pipeline-glue calls buy-signal-alerts and daily-morning-digest
 as subflows. The standalone deployments below allow them to also be triggered
 independently (e.g. for testing or manual re-runs).
 
+Prerequisites on the worker machine:
+  pip install -r requirements.txt
+  # Set PREFECT_API_URL and PREFECT_API_KEY
+  # Start the worker:
+  prefect worker start --pool default-agent-pool
+
 Usage:
   python flows/deploy_managed.py
   python flows/deploy_managed.py --work-pool my-pool
@@ -28,25 +34,11 @@ Usage:
 
 
 
-DEFAULT_WORK_POOL = "managed-pool"
+DEFAULT_WORK_POOL = "default-agent-pool"
 GITHUB_REPO = "https://github.com/Octacon100/market-data-spark"
 DEFAULT_BRANCH = "main"
 
-PIP_PACKAGES = [
-    "prefect-aws>=0.4.0",
-    "boto3>=1.34.0",
-    "botocore>=1.34.0",
-    "pandas>=2.1.0",
-    "pyarrow>=14.0.0",
-    "numpy>=1.24.0",
-    "requests>=2.31.0",
-    "anthropic>=0.39.0",
-    "python-dotenv>=1.0.0",
-]
-
-
 def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
-
 
     source = GitRepository(url=GITHUB_REPO, branch=branch)
 
@@ -115,7 +107,6 @@ def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
                 description=d["description"],
                 tags=d["tags"],
                 parameters=d["parameters"],
-                job_variables={"pip_packages": PIP_PACKAGES},
             )
             print(f"    [OK] Deployed")
         except Exception as e:
