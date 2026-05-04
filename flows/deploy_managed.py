@@ -8,7 +8,7 @@ from prefect.client.schemas.schedules import CronSchedule
 from prefect.runner.storage import GitRepository
 
 """
-Deploy market data flows to Prefect Cloud with a local process worker.
+Deploy market data flows to a self-hosted Prefect server.
 
 Deployments:
   reddit-ticker-scanner       - Every 6 hours
@@ -20,10 +20,13 @@ Note: market-data-pipeline-glue calls buy-signal-alerts and daily-morning-digest
 as subflows. The standalone deployments below allow them to also be triggered
 independently (e.g. for testing or manual re-runs).
 
-Prerequisites on the worker machine:
+Server setup:
+  prefect server start                          # starts at http://localhost:4200
+  export PREFECT_API_URL=http://localhost:4200/api
+
+Worker setup:
   pip install -r requirements.txt
-  # Set PREFECT_API_URL and PREFECT_API_KEY
-  # Start the worker:
+  prefect work-pool create default-agent-pool --type process
   prefect worker start --pool default-agent-pool
 
 Usage:
@@ -119,11 +122,11 @@ def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
         print("  prefect deployment run 'market-data-pipeline-with-glue/market-data-pipeline-glue'")
         print("  prefect deployment run 'buy-signal-alerts/buy-signal-alerts'")
         print("  prefect deployment run 'daily-morning-digest/daily-morning-digest'")
-        print("\nView at: https://app.prefect.cloud")
+        print("\nView at: http://localhost:4200")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Deploy market data flows to Prefect Cloud")
+    parser = argparse.ArgumentParser(description="Deploy market data flows to Prefect server")
     parser.add_argument(
         "--work-pool",
         default=DEFAULT_WORK_POOL,

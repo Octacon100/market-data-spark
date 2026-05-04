@@ -1,15 +1,20 @@
 """
 Upload .env values to Prefect Variables and Secrets.
 
-Sensitive keys go to Prefect Secrets (encrypted).
+Works with both self-hosted Prefect server and Prefect Cloud.
+Set PREFECT_API_URL first:
+  export PREFECT_API_URL=http://localhost:4200/api
+
+Sensitive keys go to Prefect Secrets (encrypted at rest on Cloud,
+stored in the local DB on self-hosted).
 Everything else goes to Prefect Variables.
 
 Naming: UPPER_SNAKE_CASE -> lower-kebab-case
   e.g. ALPHA_VANTAGE_API_KEY -> alpha-vantage-api-key
 
 Usage:
-  python upload_to_prefect.py
-  python upload_to_prefect.py --dry-run
+  python setup/upload_to_prefect.py
+  python setup/upload_to_prefect.py --dry-run
 """
 
 import asyncio
