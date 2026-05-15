@@ -26,7 +26,7 @@ services:
       - "4200:4200"
     environment:
       PREFECT_SERVER_DATABASE_CONNECTION_URL: "postgresql+asyncpg://prefect:prefect@postgres:5432/prefect"
-      PREFECT_UI_API_URL: "http://master-node.local:4200/api"
+      PREFECT_UI_API_URL: "http://${PREFECT_SERVER_HOST:-localhost}:4200/api"
     depends_on:
       postgres:
         condition: service_healthy
