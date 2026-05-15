@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  # ---------- PostgreSQL (persistent storage for Prefect) ----------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: prefect
+      POSTGRES_DB: prefect
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------- Prefect Server (API + UI + scheduler) ----------
+  server:
+    image: prefecthq/prefect:3-latest
+    restart: unless-stopped
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+    environment:
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: "postgresql+asyncpg://prefect:prefect@postgres:5432/prefect"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------- Prefect Worker (runs your flows) ----------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    command: prefect worker start --pool default-agent-pool --type process
+    environment:
+      PREFECT_API_URL: "http://server:4200/api"
+    env_file:
+      - .env
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
