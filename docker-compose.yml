@@ -37,7 +37,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     restart: unless-stopped
-    command: prefect worker start --pool default-agent-pool --type process
+    command: prefect worker start --pool default-agent-pool --type process --name master-node-worker
     environment:
       PREFECT_API_URL: "http://server:4200/api"
       PREFECT_API_KEY: ""
