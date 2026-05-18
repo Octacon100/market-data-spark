@@ -19,13 +19,14 @@ services:
 
   # ---------- Prefect Server (API + UI + scheduler) ----------
   server:
-    image: prefecthq/prefect:3-latest
+    image: prefecthq/prefect:3.7.1-python3.12
     restart: unless-stopped
     command: prefect server start --host 0.0.0.0
     ports:
       - "4200:4200"
     environment:
       PREFECT_SERVER_DATABASE_CONNECTION_URL: "postgresql+asyncpg://prefect:prefect@postgres:5432/prefect"
+      PREFECT_UI_API_URL: "http://${PREFECT_SERVER_HOST:-localhost}:4200/api"
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,9 +37,9 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     restart: unless-stopped
-    command: prefect worker start --pool default-agent-pool --type process
+    command: prefect worker start --pool default-agent-pool --type process --name master-node-worker
     environment:
-      PREFECT_API_URL: "http://server:4200/api"
+      PREFECT_API_URL: "http://${PREFECT_SERVER_HOST:-localhost}:4200/api"
     env_file:
       - .env
     depends_on:
