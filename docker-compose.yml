@@ -26,6 +26,7 @@ services:
       - "4200:4200"
     environment:
       PREFECT_SERVER_DATABASE_CONNECTION_URL: "postgresql+asyncpg://prefect:prefect@postgres:5432/prefect"
+      PREFECT_UI_API_URL: "http://${PREFECT_SERVER_HOST:-localhost}:4200/api"
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,6 +40,7 @@ services:
     command: prefect worker start --pool default-agent-pool --type process
     environment:
       PREFECT_API_URL: "http://server:4200/api"
+      PREFECT_API_KEY: ""
     env_file:
       - .env
     depends_on:
