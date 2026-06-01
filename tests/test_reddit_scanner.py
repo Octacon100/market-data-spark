@@ -151,10 +151,10 @@ class TestAggregateMentions:
 # ============================================================================
 
 class TestScanSubreddit:
-    """Test subreddit scanning with mocked requests.Session (JSON API)."""
+    """Test subreddit scanning with mocked Reddit client."""
 
-    def _make_mock_session(self, posts_json, comments_json=None):
-        """Build a mock session that returns posts and optionally comments."""
+    def _make_mock_client(self, posts_json, comments_json=None):
+        """Build a mock client dict with session and base_url."""
         session = MagicMock()
 
         if comments_json is None:
@@ -174,7 +174,7 @@ class TestScanSubreddit:
             return post_resp
 
         session.get.side_effect = get_side_effect
-        return session
+        return {"session": session, "base_url": "https://oauth.reddit.com"}
 
     @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
     @patch("flows.reddit_scanner.time")
@@ -186,8 +186,8 @@ class TestScanSubreddit:
             "selftext": "TSLA is also good",
             "created_utc": datetime.now(timezone.utc).timestamp(),
         }}]
-        session = self._make_mock_session(posts)
-        result = scan_subreddit.fn(session, "wallstreetbets", lookback_hours=24)
+        client = self._make_mock_client(posts)
+        result = scan_subreddit.fn(client, "wallstreetbets", lookback_hours=24)
 
         assert isinstance(result, Counter)
         assert "AAPL" in result
@@ -203,8 +203,8 @@ class TestScanSubreddit:
             "selftext": "",
             "created_utc": (datetime.now(timezone.utc) - timedelta(hours=48)).timestamp(),
         }}]
-        session = self._make_mock_session(posts)
-        result = scan_subreddit.fn(session, "stocks", lookback_hours=24)
+        client = self._make_mock_client(posts)
+        result = scan_subreddit.fn(client, "stocks", lookback_hours=24)
         assert "AAPL" not in result
 
     @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
@@ -223,8 +223,8 @@ class TestScanSubreddit:
                 {"data": {"body": "$NVDA to the moon"}},
             ]}},
         ]
-        session = self._make_mock_session(posts, comments_json)
-        result = scan_subreddit.fn(session, "investing", lookback_hours=24)
+        client = self._make_mock_client(posts, comments_json)
+        result = scan_subreddit.fn(client, "investing", lookback_hours=24)
         assert "NVDA" in result
 
     @patch("flows.reddit_scanner.load_ignore_list", return_value=set())
@@ -232,8 +232,9 @@ class TestScanSubreddit:
         """API errors are caught and return empty Counter."""
         session = MagicMock()
         session.get.side_effect = Exception("Reddit API error")
+        client = {"session": session, "base_url": "https://oauth.reddit.com"}
 
-        result = scan_subreddit.fn(session, "wallstreetbets", lookback_hours=24)
+        result = scan_subreddit.fn(client, "wallstreetbets", lookback_hours=24)
         assert isinstance(result, Counter)
         assert len(result) == 0
 
@@ -409,8 +410,9 @@ class TestEdgeCases:
         resp.json.return_value = {"data": {"children": []}}
         resp.raise_for_status = MagicMock()
         session.get.return_value = resp
+        client = {"session": session, "base_url": "https://oauth.reddit.com"}
 
-        result = scan_subreddit.fn(session, "empty_sub", lookback_hours=24)
+        result = scan_subreddit.fn(client, "empty_sub", lookback_hours=24)
         assert isinstance(result, Counter)
         assert len(result) == 0
 

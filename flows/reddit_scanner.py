@@ -107,26 +107,47 @@ TICKER_PATTERN_BARE = re.compile(r'\b([A-Z]{1,5})\b')
 @task(log_prints=True, tags=["reddit", "api"])
 def create_reddit_client():
     """
-    Create a requests session for Reddit's public JSON API.
-    No credentials required — uses public read-only endpoints.
+    Create a requests session for Reddit's OAuth API.
+    Requires REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET env vars.
+    Falls back to public JSON API if credentials are missing.
 
     Returns:
-        requests.Session: Session with Reddit-compatible User-Agent
+        dict with 'session' (requests.Session) and 'base_url' (str)
     """
-    user_agent = os.getenv("REDDIT_USER_AGENT", "market-data-scanner/1.0")
+    user_agent = os.getenv("REDDIT_USER_AGENT", "market-data-scanner/1.0 (by /u/market-data-bot)")
+    client_id = resolve("reddit-client-id", "REDDIT_CLIENT_ID")
+    client_secret = resolve("reddit-client-secret", "REDDIT_CLIENT_SECRET", is_secret=True)
+
     session = requests.Session()
     session.headers.update({"User-Agent": user_agent})
-    print("[OK] Reddit client created (public JSON API, no credentials required)")
-    return session
+
+    if client_id and client_secret:
+        auth_resp = requests.post(
+            "https://www.reddit.com/api/v1/access_token",
+            auth=(client_id, client_secret),
+            data={"grant_type": "client_credentials"},
+            headers={"User-Agent": user_agent},
+            timeout=10,
+        )
+        auth_resp.raise_for_status()
+        token = auth_resp.json()["access_token"]
+        session.headers.update({"Authorization": f"Bearer {token}"})
+        print("[OK] Reddit OAuth client created (oauth.reddit.com)")
+        return {"session": session, "base_url": "https://oauth.reddit.com"}
+    else:
+        print("[WARN] No Reddit credentials found - using public JSON API (may be rate-limited)")
+        print("[INFO] Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET for reliable access")
+        print("[INFO] Create a free app at https://www.reddit.com/prefs/apps (type: script)")
+        return {"session": session, "base_url": "https://www.reddit.com"}
 
 
 @task(log_prints=True, tags=["reddit", "scan"])
-def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
+def scan_subreddit(client, subreddit_name, lookback_hours=24, post_limit=100):
     """
-    Scan a subreddit for ticker mentions using Reddit's public JSON API.
+    Scan a subreddit for ticker mentions using Reddit's API.
 
     Args:
-        session: requests.Session with User-Agent set
+        client: dict with 'session' (requests.Session) and 'base_url' (str)
         subreddit_name: Name of subreddit to scan (without r/)
         lookback_hours: How far back to look for posts
         post_limit: Maximum number of posts to scan (max 100 per request)
@@ -134,6 +155,9 @@ def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
     Returns:
         Counter: Ticker mention counts from this subreddit
     """
+    session = client["session"]
+    base_url = client["base_url"]
+
     print(f"[INFO] Scanning r/{subreddit_name} (last {lookback_hours}h)...")
     mentions = Counter()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
@@ -145,7 +169,7 @@ def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
     posts_scanned = 0
 
     try:
-        url = f"https://www.reddit.com/r/{subreddit_name}/new.json"
+        url = f"{base_url}/r/{subreddit_name}/new.json"
         resp = session.get(url, params={"limit": min(post_limit, 100)}, timeout=10)
         resp.raise_for_status()
         posts = resp.json()["data"]["children"]
@@ -162,9 +186,8 @@ def scan_subreddit(session, subreddit_name, lookback_hours=24, post_limit=100):
             for ticker in tickers:
                 mentions[ticker] += 1
 
-            # Fetch top-level comments for this post
-            time.sleep(0.5)
-            comments_url = f"https://www.reddit.com/r/{subreddit_name}/comments/{post['id']}.json"
+            time.sleep(1.0 if base_url.endswith("reddit.com") else 0.5)
+            comments_url = f"{base_url}/r/{subreddit_name}/comments/{post['id']}.json"
             try:
                 cresp = session.get(comments_url, params={"limit": 20, "depth": 1}, timeout=10)
                 cresp.raise_for_status()
