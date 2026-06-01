@@ -4,6 +4,7 @@ Alternative to EMR - simpler, no VPC configuration needed
 """
 
 from prefect import flow
+from notify import on_flow_complete, on_flow_failure
 from market_data_flow import market_data_pipeline
 from glue_tasks import glue_analytics_flow
 from buy_signal_alerts import buy_signal_alert_flow
@@ -14,7 +15,9 @@ import os
 @flow(
     name="market-data-pipeline-with-glue",
     description="Complete pipeline: Data collection + Spark analytics on AWS Glue (serverless)",
-    log_prints=True
+    log_prints=True,
+    on_completion=[on_flow_complete],
+    on_failure=[on_flow_failure],
 )
 def market_data_pipeline_with_glue():
     """
