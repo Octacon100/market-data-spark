@@ -6,6 +6,7 @@ Reads ML features from S3, evaluates buy signals, and sends email via Gmail SMTP
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
+from notify import on_flow_complete, on_flow_failure
 import boto3
 import pandas as pd
 import smtplib
@@ -378,6 +379,8 @@ No buy signals detected for current watchlist.
     name="buy-signal-alerts",
     description="Detect buy signals from ML features and send email alerts",
     log_prints=True,
+    on_completion=[on_flow_complete],
+    on_failure=[on_flow_failure],
 )
 def buy_signal_alert_flow(bucket: str = None):
     """

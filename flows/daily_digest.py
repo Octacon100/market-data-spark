@@ -11,6 +11,7 @@ Sends a single consolidated HTML email at 7 AM ET on weekdays combining:
 from typing import Optional
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
+from notify import on_flow_complete, on_flow_failure
 import boto3
 import pandas as pd
 import smtplib
@@ -610,6 +611,8 @@ def create_digest_artifact(signals: list, trending: list, movers: list, new_addi
     name="daily-morning-digest",
     description="Send a consolidated morning email with buy signals, Reddit trends, and price movers",
     log_prints=True,
+    on_completion=[on_flow_complete],
+    on_failure=[on_flow_failure],
 )
 def daily_digest_flow(bucket: Optional[str] = None, top_n_reddit: int = 10, top_n_movers: int = 10):
     """

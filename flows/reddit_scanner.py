@@ -6,6 +6,7 @@ Scans Reddit communities for stock ticker mentions and stores trending data to S
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
+from notify import on_flow_complete, on_flow_failure
 import boto3
 import requests
 import re
@@ -437,6 +438,8 @@ def update_watchlist_from_trending(results, auto_add_top_n=5, min_mentions=10):
     name="reddit-ticker-scanner",
     description="Scan Reddit communities for trending stock ticker mentions",
     log_prints=True,
+    on_completion=[on_flow_complete],
+    on_failure=[on_flow_failure],
 )
 def reddit_scanner_flow(
     subreddits=None,
