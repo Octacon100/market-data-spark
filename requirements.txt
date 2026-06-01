@@ -1,5 +1,5 @@
 # Core Orchestration
-prefect>=3.0.0
+prefect==3.7.1
 prefect-aws>=0.4.0
 
 # AWS SDK

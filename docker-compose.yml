@@ -19,7 +19,7 @@ services:
 
   # ---------- Prefect Server (API + UI + scheduler) ----------
   server:
-    image: prefecthq/prefect:3-latest
+    image: prefecthq/prefect:3.7.1-python3.12
     restart: unless-stopped
     command: prefect server start --host 0.0.0.0
     ports:
@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
     command: prefect worker start --pool default-agent-pool --type process --name master-node-worker
     environment:
-      PREFECT_API_URL: "http://server:4200/api"
+      PREFECT_API_URL: "http://${PREFECT_SERVER_HOST:-localhost}:4200/api"
       PREFECT_API_KEY: ""
     env_file:
       - .env
