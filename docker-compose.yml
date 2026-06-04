@@ -41,6 +41,8 @@ services:
     environment:
       PREFECT_API_URL: "http://${PREFECT_SERVER_HOST:-localhost}:4200/api"
       PREFECT_API_KEY: ""
+    volumes:
+      - ./config:/app/config
     env_file:
       - .env
     depends_on:
