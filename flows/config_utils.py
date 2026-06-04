@@ -2,11 +2,19 @@
 
 import asyncio
 import os
+from pathlib import Path
 from typing import Optional
 
 import dotenv
 
 dotenv.load_dotenv()
+
+# Config directory: use CONFIG_DIR env var if set (for Docker volume mount),
+# otherwise fall back to ../config relative to this file.
+CONFIG_DIR = Path(os.getenv("CONFIG_DIR", Path(__file__).parent.parent / "config"))
+SETTINGS_PATH = CONFIG_DIR / "pipeline_settings.json"
+WATCHLIST_PATH = CONFIG_DIR / "watchlist.json"
+IGNORE_LIST_PATH = CONFIG_DIR / "reddit_ignore_list.json"
 
 
 def _get_prefect_variable(name: str) -> Optional[str]:

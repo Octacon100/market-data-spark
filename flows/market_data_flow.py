@@ -30,7 +30,7 @@ dotenv.load_dotenv()
 # Watchlist Loader
 # ============================================================================
 
-WATCHLIST_PATH = Path(__file__).parent.parent / "config" / "watchlist.json"
+from config_utils import WATCHLIST_PATH
 
 
 def load_watchlist() -> list:

@@ -22,7 +22,7 @@ from config_utils import resolve, make_boto3_client
 # Configuration
 # ============================================================================
 
-SETTINGS_PATH = Path(__file__).parent.parent / "config" / "pipeline_settings.json"
+from config_utils import SETTINGS_PATH
 
 
 def load_settings():

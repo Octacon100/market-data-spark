@@ -26,9 +26,7 @@ dotenv.load_dotenv()
 # Configuration
 # ============================================================================
 
-SETTINGS_PATH = Path(__file__).parent.parent / "config" / "pipeline_settings.json"
-WATCHLIST_PATH = Path(__file__).parent.parent / "config" / "watchlist.json"
-IGNORE_LIST_PATH = Path(__file__).parent.parent / "config" / "reddit_ignore_list.json"
+from config_utils import SETTINGS_PATH, WATCHLIST_PATH, IGNORE_LIST_PATH
 
 
 def load_ignore_list():

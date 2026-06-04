@@ -8,11 +8,12 @@ from prefect.runner.storage import GitRepository
 
 """
 Deploy market data flows to a self-hosted Prefect server with a local
-process worker. Use this instead of deploy_managed.py when running your
-own Prefect server (e.g. via Docker Compose or bare-metal).
+process worker. Code is pulled from GitHub on each run via GitRepository.
+Config files (watchlist, ignore list, settings) are stored separately
+at CONFIG_DIR (default /app/config, volume-mounted in Docker).
 
 Deployments:
-  reddit-ticker-scanner       - Every 6 hours
+  social-ticker-scanner       - Every 6 hours
   market-data-pipeline-glue   - Daily at 6 PM ET
   buy-signal-alerts           - Daily at 6:30 PM ET
   daily-morning-digest        - Weekdays at 7 AM ET
@@ -80,7 +81,7 @@ def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
             "entrypoint": "flows/daily_digest.py:daily_digest_flow",
             "name": "daily-morning-digest",
             "schedule": CronSchedule(cron="0 7 * * 1-5", timezone="America/New_York"),
-            "description": "Weekday morning email digest: buy signals, Reddit trends, price movers",
+            "description": "Weekday morning email digest: buy signals, trending tickers, price movers",
             "tags": ["production", "digest", "email"],
             "parameters": {},
         },
@@ -120,7 +121,7 @@ def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
     if not dry_run:
         print("\n[OK] Done.")
         print("\nTo run manually:")
-        print("  prefect deployment run 'reddit-ticker-scanner/reddit-ticker-scanner'")
+        print("  prefect deployment run 'social-ticker-scanner/social-ticker-scanner'")
         print("  prefect deployment run 'market-data-pipeline-with-glue/market-data-pipeline-glue'")
         print("  prefect deployment run 'buy-signal-alerts/buy-signal-alerts'")
         print("  prefect deployment run 'daily-morning-digest/daily-morning-digest'")
