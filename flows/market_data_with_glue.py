@@ -87,9 +87,8 @@ def market_data_pipeline_with_glue():
 
     digest_results = daily_digest_flow(
         bucket=os.getenv('S3_BUCKET'),
-        signal_results=signal_results,
     )
-    digest_count = digest_results.get('stocks_analyzed', 0)
+    digest_count = digest_results.get('trending_count', 0) if isinstance(digest_results, dict) else 0
 
     # Phase 5: Summary
     print("\n" + "="*70)
@@ -102,7 +101,7 @@ def market_data_pipeline_with_glue():
     glue_success = len([j for j in glue_results.get('job_results', []) if j.get('status') == 'success'])
     print(f"[OK] Glue Jobs Succeeded: {glue_success}/{len(glue_results.get('job_results', []))}")
     print(f"[SIGNALS] Buy Signals: {signal_count} detected")
-    print(f"[DIGEST] Claude Synopses: {digest_count} stocks analyzed")
+    print(f"[DIGEST] Trending tickers: {digest_count}")
 
     # Show cost
     estimated_cost = glue_results.get('estimated_cost', 0)
@@ -120,7 +119,7 @@ def market_data_pipeline_with_glue():
             'glue_jobs_run': len(glue_results.get('job_results', [])),
             'glue_jobs_succeeded': glue_success,
             'buy_signals_detected': signal_count,
-            'digest_stocks_analyzed': digest_count,
+            'digest_trending_count': digest_count,
             'estimated_cost': estimated_cost,
             'message': 'Pipeline complete - Glue jobs finished'
         }
