@@ -4,12 +4,13 @@ from buy_signal_alerts import buy_signal_alert_flow
 from daily_digest import daily_digest_flow
 import argparse
 from prefect.client.schemas.schedules import CronSchedule
+from prefect.runner.storage import GitRepository
 
 """
 Deploy market data flows to a self-hosted Prefect server with a local
-process worker. Flows run from the local filesystem (no git clone per run),
-so changes to config/watchlist.json and config/reddit_ignore_list.json
-persist between runs.
+process worker. Code is pulled from GitHub on each run via GitRepository.
+Config files (watchlist, ignore list, settings) are stored separately
+at CONFIG_DIR (default /app/config, volume-mounted in Docker).
 
 Deployments:
   social-ticker-scanner       - Every 6 hours
@@ -39,13 +40,18 @@ Or from Docker:
 
 
 DEFAULT_WORK_POOL = "default-agent-pool"
+GITHUB_REPO = "https://github.com/Octacon100/market-data-spark"
+DEFAULT_BRANCH = "main"
 
 
-def deploy_all(work_pool: str, dry_run: bool = False):
+def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
+
+    source = GitRepository(url=GITHUB_REPO, branch=branch)
 
     deployments = [
         {
             "flow": reddit_scanner_flow,
+            "entrypoint": "flows/reddit_scanner.py:reddit_scanner_flow",
             "name": "social-ticker-scanner",
             "schedule": CronSchedule(cron="0 */6 * * *", timezone="America/New_York"),
             "description": "Scan Reddit, StockTwits, and Yahoo Finance for trending tickers every 6 hours",
@@ -54,6 +60,7 @@ def deploy_all(work_pool: str, dry_run: bool = False):
         },
         {
             "flow": market_data_pipeline_with_glue,
+            "entrypoint": "flows/market_data_with_glue.py:market_data_pipeline_with_glue",
             "name": "market-data-pipeline-glue",
             "schedule": CronSchedule(cron="0 18 * * *", timezone="America/New_York"),
             "description": "Daily market data collection + Glue Spark analytics + buy signals + digest",
@@ -62,6 +69,7 @@ def deploy_all(work_pool: str, dry_run: bool = False):
         },
         {
             "flow": buy_signal_alert_flow,
+            "entrypoint": "flows/buy_signal_alerts.py:buy_signal_alert_flow",
             "name": "buy-signal-alerts",
             "schedule": CronSchedule(cron="30 18 * * *", timezone="America/New_York"),
             "description": "Standalone buy signal detection and email alerts",
@@ -70,6 +78,7 @@ def deploy_all(work_pool: str, dry_run: bool = False):
         },
         {
             "flow": daily_digest_flow,
+            "entrypoint": "flows/daily_digest.py:daily_digest_flow",
             "name": "daily-morning-digest",
             "schedule": CronSchedule(cron="0 7 * * 1-5", timezone="America/New_York"),
             "description": "Weekday morning email digest: buy signals, trending tickers, price movers",
@@ -78,7 +87,7 @@ def deploy_all(work_pool: str, dry_run: bool = False):
         },
     ]
 
-    print(f"\n[INFO] Source : local filesystem")
+    print(f"\n[INFO] Repo   : {GITHUB_REPO} (branch: {branch})")
     print(f"[INFO] Pool   : {work_pool}")
     print(f"[INFO] Deployments: {len(deployments)}")
     if dry_run:
@@ -86,6 +95,7 @@ def deploy_all(work_pool: str, dry_run: bool = False):
 
     for d in deployments:
         print(f"\n  {d['name']}")
+        print(f"    Entrypoint : {d['entrypoint']}")
         print(f"    Schedule   : {d['schedule'].cron} ({d['schedule'].timezone})")
         print(f"    Tags       : {', '.join(d['tags'])}")
 
@@ -93,7 +103,10 @@ def deploy_all(work_pool: str, dry_run: bool = False):
             continue
 
         try:
-            d["flow"].deploy(
+            d["flow"].from_source(
+                source=source,
+                entrypoint=d["entrypoint"],
+            ).deploy(
                 name=d["name"],
                 work_pool_name=work_pool,
                 schedule=d["schedule"],
@@ -123,10 +136,15 @@ if __name__ == "__main__":
         help=f"Prefect work pool name (default: {DEFAULT_WORK_POOL})",
     )
     parser.add_argument(
+        "--branch",
+        default=DEFAULT_BRANCH,
+        help=f"Git branch to deploy from (default: {DEFAULT_BRANCH})",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview deployments without creating them",
     )
     args = parser.parse_args()
 
-    deploy_all(work_pool=args.work_pool, dry_run=args.dry_run)
+    deploy_all(work_pool=args.work_pool, branch=args.branch, dry_run=args.dry_run)
