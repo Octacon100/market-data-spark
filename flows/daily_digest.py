@@ -163,17 +163,17 @@ def gather_buy_signals(bucket: str) -> list:
     return signals
 
 
-@task(log_prints=True, tags=["digest", "reddit"])
+@task(log_prints=True, tags=["digest", "trending"])
 def gather_reddit_trending(bucket: str, top_n: int = 10) -> list:
     """
-    Read today's Reddit trending tickers from S3.
+    Read today's trending tickers from S3 (written by social-ticker-scanner).
 
     Args:
         bucket: S3 bucket name
         top_n: How many top tickers to include
 
     Returns:
-        list of dicts with symbol, mentions, subreddits
+        list of dicts with symbol, mentions, sources
     """
     s3 = make_boto3_client("s3")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -183,17 +183,23 @@ def gather_reddit_trending(bucket: str, top_n: int = 10) -> list:
         resp = s3.get_object(Bucket=bucket, Key=key)
         data = json.loads(resp["Body"].read())
         tickers = data.get("tickers", {})
-        trending = [{"symbol": t, "mentions": c} for t, c in tickers.items()]
+        by_source = data.get("by_subreddit", {})
+
+        trending = []
+        for ticker, count in tickers.items():
+            sources = [src for src, counts in by_source.items() if ticker in counts]
+            trending.append({"symbol": ticker, "mentions": count, "sources": sources})
+
         trending_sorted = sorted(trending, key=lambda x: x["mentions"], reverse=True)
         result = trending_sorted[:top_n]
-        print(f"[OK] Reddit trending: {len(result)} tickers loaded")
+        print(f"[OK] Trending: {len(result)} tickers loaded")
         return result
 
     except s3.exceptions.NoSuchKey:
-        print(f"[WARN] No Reddit data for today ({today}) - run reddit_scanner_flow first")
+        print(f"[WARN] No trending data for today ({today}) - run social scanner first")
         return []
     except Exception as e:
-        print(f"[ERROR] Failed to read Reddit trending: {e}")
+        print(f"[ERROR] Failed to read trending data: {e}")
         return []
 
 
@@ -339,16 +345,16 @@ def _mover_row_html(mover: dict) -> str:
     )
 
 
-def _reddit_row_html(ticker: dict) -> str:
-    """Render a Reddit trending row as HTML."""
+def _trending_row_html(ticker: dict) -> str:
+    """Render a trending ticker row as HTML."""
     symbol = ticker.get("symbol", ticker.get("ticker", ""))
     mentions = ticker.get("mentions", 0)
-    subreddits = ", ".join(ticker.get("subreddits", []))
+    sources = ", ".join(ticker.get("sources", []))
     return (
         f'<tr>'
         f'<td style="padding:6px 10px;border:1px solid #ddd;font-weight:bold">{symbol}</td>'
         f'<td style="padding:6px 10px;border:1px solid #ddd">{mentions}</td>'
-        f'<td style="padding:6px 10px;border:1px solid #ddd">{subreddits}</td>'
+        f'<td style="padding:6px 10px;border:1px solid #ddd">{sources}</td>'
         f'</tr>'
     )
 
@@ -429,17 +435,17 @@ def compose_and_send_digest(
     else:
         movers_html = _no_data_html("No price mover data available.")
 
-    # Reddit Trending section
+    # Social Trending section
     if trending:
-        reddit_rows = "".join(_reddit_row_html(t) for t in trending)
-        reddit_html = _table_html(["Symbol", "Mentions", "Subreddits"], reddit_rows)
+        trending_rows = "".join(_trending_row_html(t) for t in trending)
+        trending_html = _table_html(["Symbol", "Mentions", "Sources"], trending_rows)
     else:
-        reddit_html = _no_data_html("No Reddit trending data available for today.")
+        trending_html = _no_data_html("No trending data available for today.")
 
     # New Watchlist Additions section
     if new_additions:
         additions_list = "".join(
-            f'<li style="margin:4px 0"><strong>{sym}</strong> - added from Reddit scan</li>'
+            f'<li style="margin:4px 0"><strong>{sym}</strong> - added from social scan</li>'
             for sym in new_additions
         )
         additions_html = f'<ul style="padding-left:20px">{additions_list}</ul>'
@@ -470,10 +476,10 @@ def compose_and_send_digest(
             {_section_header_html("Watchlist Price Movers (Top 10)")}
             {movers_html}
 
-            {_section_header_html("Reddit Trending Tickers (Top 10)")}
-            {reddit_html}
+            {_section_header_html("Trending Tickers (Top 10)")}
+            {trending_html}
 
-            {_section_header_html("New Watchlist Additions from Reddit")}
+            {_section_header_html("New Watchlist Additions")}
             {additions_html}
 
             <p style="color:#aaa;font-size:11px;margin-top:32px;border-top:1px solid #eee;padding-top:12px">
@@ -505,7 +511,7 @@ def compose_and_send_digest(
     else:
         text_lines.append("  No data available.")
 
-    text_lines += ["", "== REDDIT TRENDING =="]
+    text_lines += ["", "== TRENDING TICKERS =="]
     if trending:
         for t in trending:
             sym = t.get("symbol", t.get("ticker", ""))
@@ -583,7 +589,7 @@ def create_digest_artifact(signals: list, trending: list, movers: list, new_addi
 |--------|-------|--------|
 {mover_rows if mover_rows else no_movers_row}
 
-## Reddit Trending (Top {len(trending)})
+## Trending Tickers (Top {len(trending)})
 
 | Symbol | Mentions |
 |--------|----------|
