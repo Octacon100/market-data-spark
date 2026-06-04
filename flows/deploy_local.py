@@ -51,10 +51,10 @@ def deploy_all(work_pool: str, branch: str, dry_run: bool = False):
         {
             "flow": reddit_scanner_flow,
             "entrypoint": "flows/reddit_scanner.py:reddit_scanner_flow",
-            "name": "reddit-ticker-scanner",
+            "name": "social-ticker-scanner",
             "schedule": CronSchedule(cron="0 */6 * * *", timezone="America/New_York"),
-            "description": "Scan Reddit for trending stock ticker mentions every 6 hours",
-            "tags": ["production", "reddit", "scanner"],
+            "description": "Scan Reddit, StockTwits, and Yahoo Finance for trending tickers every 6 hours",
+            "tags": ["production", "social", "scanner"],
             "parameters": {},
         },
         {

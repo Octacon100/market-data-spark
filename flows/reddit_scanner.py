@@ -454,12 +454,91 @@ def update_watchlist_from_trending(results, auto_add_top_n=5, min_mentions=10):
 
 
 # ============================================================================
+# StockTwits Scanner
+# ============================================================================
+
+@task(log_prints=True, tags=["stocktwits", "scan"])
+def scan_stocktwits_trending():
+    """
+    Fetch trending symbols from StockTwits public API (no auth required).
+
+    Returns:
+        Counter: Ticker mention counts based on watchlist_count
+    """
+    print("[INFO] Fetching StockTwits trending symbols...")
+    mentions = Counter()
+
+    try:
+        resp = requests.get(
+            "https://api.stocktwits.com/api/2/trending/symbols.json",
+            headers={"User-Agent": "market-data-scanner/1.0"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        for symbol_data in data.get("symbols", []):
+            ticker = symbol_data.get("symbol", "")
+            if ticker and ticker not in FALSE_POSITIVES:
+                score = symbol_data.get("watchlist_count", 1)
+                mentions[ticker] = score
+
+        print(f"  [OK] StockTwits: {len(mentions)} trending symbols")
+
+    except Exception as e:
+        print(f"  [ERROR] StockTwits API failed: {e}")
+
+    return mentions
+
+
+# ============================================================================
+# Yahoo Finance Trending Scanner
+# ============================================================================
+
+@task(log_prints=True, tags=["yahoo", "scan"])
+def scan_yahoo_trending():
+    """
+    Fetch trending tickers from Yahoo Finance (no auth required).
+
+    Returns:
+        Counter: Ticker mention counts (each trending ticker gets score 1)
+    """
+    print("[INFO] Fetching Yahoo Finance trending tickers...")
+    mentions = Counter()
+
+    try:
+        resp = requests.get(
+            "https://query2.finance.yahoo.com/v1/finance/trending/US",
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        quotes = data.get("finance", {}).get("result", [])
+        if quotes:
+            for item in quotes[0].get("quotes", []):
+                ticker = item.get("symbol", "")
+                if ticker and ticker.isalpha() and ticker not in FALSE_POSITIVES:
+                    mentions[ticker] = 1
+
+        print(f"  [OK] Yahoo Finance: {len(mentions)} trending tickers")
+
+    except Exception as e:
+        print(f"  [WARN] Yahoo Finance trending failed: {e}")
+
+    return mentions
+
+
+# ============================================================================
 # Flow
 # ============================================================================
 
 @flow(
-    name="reddit-ticker-scanner",
-    description="Scan Reddit communities for trending stock ticker mentions",
+    name="social-ticker-scanner",
+    description="Scan Reddit, StockTwits, and Yahoo Finance for trending stock tickers",
     log_prints=True,
     on_completion=[on_flow_complete],
     on_failure=[on_flow_failure],
@@ -472,18 +551,22 @@ def reddit_scanner_flow(
     bucket=None,
 ):
     """
-    Scan Reddit for stock ticker mentions and store results.
+    Scan multiple social/financial sources for stock ticker mentions.
+
+    Sources:
+    - Reddit (requires REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET)
+    - StockTwits trending (no auth needed)
+    - Yahoo Finance trending (no auth needed)
 
     Steps:
-    1. Create Reddit client
-    2. Scan configured subreddits
-    3. Aggregate and rank mentions
-    4. Store trending data to S3
-    5. Optionally update watchlist
+    1. Scan all sources for ticker mentions
+    2. Aggregate and rank mentions
+    3. Store trending data to S3
+    4. Optionally update watchlist
 
     Args:
         subreddits: List of subreddit names to scan
-        lookback_hours: Hours to look back for posts
+        lookback_hours: Hours to look back for Reddit posts
         min_mentions: Minimum mention count to include
         auto_update_watchlist: Whether to auto-update watchlist.json
         bucket: S3 bucket name (defaults to S3_BUCKET env var)
@@ -506,49 +589,57 @@ def reddit_scanner_flow(
     threshold = reddit_config.get("min_mention_threshold", min_mentions)
 
     print("\n" + "=" * 60)
-    print("[SCANNER] Reddit Ticker Scanner")
+    print("[SCANNER] Social Ticker Scanner")
     print("=" * 60)
-    print(f"  Subreddits: {', '.join(subreddits)}")
-    print(f"  Lookback: {lookback}h")
-    print(f"  Min mentions: {threshold}")
+    print(f"  Reddit: {', '.join(subreddits)}")
+    print(f"  StockTwits: trending symbols")
+    print(f"  Yahoo Finance: trending tickers")
+    print(f"  Lookback: {lookback}h | Min mentions: {threshold}")
     print("=" * 60 + "\n")
 
-    # Step 1: Create Reddit client
-    reddit = create_reddit_client()
+    all_mentions = []
 
-    # Step 2: Scan each subreddit
-    subreddit_mentions = []
+    # Source 1: Reddit
+    reddit = create_reddit_client()
     for sub_name in subreddits:
         mentions = scan_subreddit(reddit, sub_name, lookback_hours=lookback)
-        subreddit_mentions.append((sub_name, mentions))
+        all_mentions.append((f"reddit/{sub_name}", mentions))
 
-    # Step 3: Aggregate
-    results = aggregate_mentions(subreddit_mentions, min_mentions=threshold)
+    # Source 2: StockTwits
+    st_mentions = scan_stocktwits_trending()
+    all_mentions.append(("stocktwits", st_mentions))
 
-    # Step 4: Store to S3
+    # Source 3: Yahoo Finance
+    yf_mentions = scan_yahoo_trending()
+    all_mentions.append(("yahoo_finance", yf_mentions))
+
+    # Aggregate all sources
+    results = aggregate_mentions(all_mentions, min_mentions=threshold)
+
+    # Store to S3
     s3_key = store_trending_to_s3(results, bucket)
 
-    # Step 5: Optionally update watchlist
+    # Optionally update watchlist
     watchlist_summary = None
     if auto_update_watchlist:
         watchlist_summary = update_watchlist_from_trending(results)
 
     # Emit completion event
     emit_event(
-        event="reddit.scanner.completed",
+        event="social.scanner.completed",
         resource={
-            "prefect.resource.id": "reddit-ticker-scanner",
-            "prefect.resource.name": "Reddit Ticker Scanner",
+            "prefect.resource.id": "social-ticker-scanner",
+            "prefect.resource.name": "Social Ticker Scanner",
         },
         payload={
-            "subreddits_scanned": len(subreddits),
+            "sources_scanned": len(all_mentions),
             "unique_tickers": results.get("total_unique_tickers", 0),
             "s3_key": s3_key,
             "watchlist_updated": auto_update_watchlist,
         },
     )
 
-    print(f"\n[COMPLETE] Reddit scan finished: "
+    print(f"\n[COMPLETE] Social scan finished: "
           f"{results.get('total_unique_tickers', 0)} tickers found")
 
     return {
