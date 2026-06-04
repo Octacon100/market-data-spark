@@ -1,1 +1,8 @@
-[]
+[
+    "BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "SHIB", "DOT",
+    "AVAX", "MATIC", "LINK", "UNI", "LTC", "BCH", "XLM", "ALGO",
+    "ATOM", "FIL", "NEAR", "APT", "ARB", "OP", "SUI", "SEI",
+    "PEPE", "BONK", "WIF", "HBAR", "VET", "ICP", "FTM", "SAND",
+    "MANA", "AXS", "CRO", "TRX", "EOS", "XTZ", "AAVE", "MKR",
+    "SNX", "COMP", "SUSHI", "YFI", "RUNE", "INJ", "TIA", "JUP"
+]

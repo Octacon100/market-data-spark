@@ -467,6 +467,8 @@ def scan_stocktwits_trending():
     """
     print("[INFO] Fetching StockTwits trending symbols...")
     mentions = Counter()
+    ignore_set = load_ignore_list()
+    skip = FALSE_POSITIVES | ignore_set
 
     try:
         resp = requests.get(
@@ -479,7 +481,7 @@ def scan_stocktwits_trending():
 
         for symbol_data in data.get("symbols", []):
             ticker = symbol_data.get("symbol", "")
-            if ticker and ticker not in FALSE_POSITIVES:
+            if ticker and ticker not in skip:
                 score = symbol_data.get("watchlist_count", 1)
                 mentions[ticker] = score
 
@@ -505,6 +507,8 @@ def scan_yahoo_trending():
     """
     print("[INFO] Fetching Yahoo Finance trending tickers...")
     mentions = Counter()
+    ignore_set = load_ignore_list()
+    skip = FALSE_POSITIVES | ignore_set
 
     try:
         resp = requests.get(
@@ -521,7 +525,7 @@ def scan_yahoo_trending():
         if quotes:
             for item in quotes[0].get("quotes", []):
                 ticker = item.get("symbol", "")
-                if ticker and ticker.isalpha() and ticker not in FALSE_POSITIVES:
+                if ticker and ticker.isalpha() and ticker not in skip:
                     mentions[ticker] = 1
 
         print(f"  [OK] Yahoo Finance: {len(mentions)} trending tickers")
