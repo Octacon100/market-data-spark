@@ -80,11 +80,18 @@ def detect_buy_signals(bucket: str) -> list:
             return []
 
         # Read all parquet files into a single DataFrame
+        # Symbol is a partition column (in the directory path, not the file)
         frames = []
         for key in parquet_keys:
             response = s3.get_object(Bucket=bucket, Key=key)
             buf = io.BytesIO(response["Body"].read())
-            frames.append(pd.read_parquet(buf))
+            frame = pd.read_parquet(buf)
+            # Extract symbol from path: analytics/ml_features/symbol=AAPL/part-xxx.parquet
+            for part in key.split("/"):
+                if part.startswith("symbol="):
+                    frame["symbol"] = part.split("=", 1)[1]
+                    break
+            frames.append(frame)
 
         df = pd.concat(frames, ignore_index=True)
         print(f"[OK] Loaded {len(df)} records from ML features")
