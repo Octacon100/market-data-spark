@@ -1,0 +1,6 @@
+# Microsoft Fabric / OneLake dependencies
+# Install in addition to requirements.txt when using the Fabric edition:
+#   pip install -r requirements.txt -r requirements-fabric.txt
+
+azure-identity>=1.15.0
+azure-storage-file-datalake>=12.14.0
